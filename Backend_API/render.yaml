@@ -1,0 +1,38 @@
+# Render.com web service - ROKIKA SHOP Backend API
+# Deploy: push this file to GitHub, then in Render -> New + -> Web Service -> connect repo -> select this render.yaml
+
+services:
+  - type: web
+    name: rokika-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: rokika-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://rokika-shop.netlify.app,https://dashboard.rokika-shop.netlify.app,https://telegram.rokika-shop.netlify.app
+      - key: STORE_URL
+        value: https://rokika-shop.netlify.app
+      - key: API_URL
+        value: https://rokika-api.onrender.com
+      - key: PLATFORM_SHOP_USERNAME
+        value: demo
+      - key: REFERRAL_SECRET
+        generateValue: true
+
+databases:
+  - name: rokika-db
+    plan: free
+    databaseName: rokikadb
+    user: rokika

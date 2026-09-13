@@ -1,0 +1,14 @@
+[build]
+  command = "npm run build"
+  publish = "build"
+
+[build.environment]
+  # Point your own deployment at YOUR backend (set it in the Netlify UI for real deploys)
+  REACT_APP_API_URL = "http://localhost:8000"
+  CI = "false"
+
+# SPA fallback: serve index.html for all client-side routes
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

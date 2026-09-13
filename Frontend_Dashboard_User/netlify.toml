@@ -1,0 +1,14 @@
+[build]
+  command = "npm run build"
+  publish = "build"
+
+[build.environment]
+  # Override this in the Netlify UI for production deploys.
+  REACT_APP_API_URL = "https://rokika-api.onrender.com"
+  CI = "false"
+
+# SPA fallback: serve index.html for all client-side routes
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

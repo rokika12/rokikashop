@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-export const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+export const API_BASE = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
 
 // Shop owner dashboard (Frontend_Dashboard_User) — opened from the storefront
 // header when the owner is logged in and viewing their own shop.
@@ -70,5 +70,9 @@ export const updateMyProfile = (token, data) =>
   api.put('/api/customers/auth/me', data, { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then((r) => r.data);
 export const changeMyPassword = (token, data) =>
   api.post('/api/customers/auth/change-password', data, { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then((r) => r.data);
+export const getMyWallet = (token) =>
+  api.get('/api/customers/auth/wallet', { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then((r) => r.data);
+export const topUpWallet = (token, data) =>
+  api.post('/api/customers/auth/wallet/topup', data, { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then((r) => r.data);
 
 export default api;

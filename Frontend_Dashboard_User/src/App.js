@@ -19,6 +19,7 @@ import Backup from './pages/Backup';
 import Reports from './pages/Reports';
 import Receipts from './pages/Receipts';
 import UpgradePlan from './pages/UpgradePlan';
+import KHSMMServices from './pages/KHSMMServices';
 
 function Protected({ children }) {
   const { user } = useAuth();
@@ -49,6 +50,7 @@ export default function App() {
           <Route path="backup" element={<Backup />} />
           <Route path="reports" element={<Reports />} />
           <Route path="receipts" element={<Receipts />} />
+          <Route path="khsmm" element={<KHSMMServices />} />
           <Route path="upgrade" element={<UpgradePlan />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { FiChevronLeft, FiShoppingBag, FiShoppingCart } from 'react-icons/fi';
+import { FiChevronLeft, FiShoppingBag, FiZap } from 'react-icons/fi';
 import { useShop } from '../contexts/ShopContext';
 import { useCart } from '../contexts/CartContext';
 import { useLanguage } from '../i18n';
@@ -12,13 +12,12 @@ import Loading from '../components/Loading';
 export default function ProductDetail() {
   const { id } = useParams();
   const { shop } = useShop();
-  const { addItem } = useCart();
+  const { addItem, setOpen } = useCart();
   const { t } = useLanguage();
   const navigate = useNavigate();
   const [product, setProduct] = useState(null);
   const [related, setRelated] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [qty, setQty] = useState(1);
   const [selectedVariations, setSelectedVariations] = useState({});
   const [activeImage, setActiveImage] = useState(0);
 
@@ -92,17 +91,13 @@ export default function ProductDetail() {
     return list;
   })();
 
-  const addToCart = () => {
+  const buyNow = () => {
     const missing = selectableAttrs.find((a) => !selectedVariations[a.key]);
-    if (missing) {
-      toast.error(`Please select ${missing.label}`);
-      return;
-    }
-    if (effectiveStock <= 0) {
-      toast.error('This item is out of stock');
-      return;
-    }
-    addItem(product, qty, selectedVariations);
+    if (missing) { toast.error(`Please select ${missing.label}`); return; }
+    if (effectiveStock <= 0) { toast.error('This item is out of stock'); return; }
+    addItem(product, 1, selectedVariations);
+    setOpen(false);
+    navigate(`/${shop.username}/checkout`);
   };
 
   return (
@@ -142,6 +137,11 @@ export default function ProductDetail() {
         <div>
           {product.category_name && <span className="text-xs text-primary font-semibold uppercase">{product.category_name}</span>}
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mt-1">{product.name}</h1>
+          {product.metadata?.product_type === 'digital' && product.metadata?.duration && (
+            <span className="inline-block mt-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+              Digital access · {product.metadata.duration}
+            </span>
+          )}
 
           <div className="flex items-center gap-3 mt-4">
             <span className="text-3xl font-bold dark:text-gray-100">{effectivePrice.toFixed(2)}</span>
@@ -208,19 +208,10 @@ export default function ProductDetail() {
             </div>
           )}
 
-          {/* Quantity + add to cart */}
+          {/* Direct digital purchase */}
           <div className="flex items-center gap-4 mt-8">
-            <div className="flex items-center border rounded-xl overflow-hidden">
-              <button onClick={() => setQty(Math.max(1, qty - 1))} className="px-4 py-2.5 hover:bg-gray-100 dark:hover:bg-gray-700 font-bold">−</button>
-              <span className="px-4 font-semibold">{qty}</span>
-              <button onClick={() => setQty(qty + 1)} className="px-4 py-2.5 hover:bg-gray-100 dark:hover:bg-gray-700 font-bold">+</button>
-            </div>
-            <button
-              onClick={addToCart}
-              disabled={effectiveStock <= 0}
-              className="flex-1 btn-primary py-3 rounded-xl font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              <FiShoppingCart /> {t('addToCart')}
+            <button onClick={buyNow} disabled={effectiveStock <= 0} className="flex-1 px-5 py-3 rounded-xl bg-primary text-white font-bold hover:brightness-95 disabled:opacity-50 flex items-center justify-center gap-2">
+              <FiZap /> Buy Now
             </button>
           </div>
 

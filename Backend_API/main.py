@@ -17,6 +17,19 @@ from routers import (auth, backup, categories, customers, orders, payments,
 from seed import seed_database
 
 
+def _validate_production_security():
+    if config.ENVIRONMENT != "production":
+        return
+    if (len(config.SECRET_KEY) < 32
+            or config.SECRET_KEY == "mini-shop-platform-secret-key-change-me"):
+        raise RuntimeError("Production requires MINISHOP_SECRET_KEY with at least 32 random characters")
+    if config.DEFAULT_ADMIN_PASSWORD == "ChangeMe123!" or len(config.DEFAULT_ADMIN_PASSWORD) < 12:
+        raise RuntimeError("Production requires a strong DEFAULT_ADMIN_PASSWORD")
+
+
+_validate_production_security()
+
+
 def _migrate_columns():
     """Lightweight migration for SQLite: add missing columns to existing tables."""
     from sqlalchemy import inspect as sa_inspect, text as sa_text
@@ -32,6 +45,7 @@ def _migrate_columns():
             "password_hash": "VARCHAR DEFAULT ''",
             "telegram_username": "VARCHAR DEFAULT ''",
             "telegram_phone": "VARCHAR DEFAULT ''",
+            "wallet_balance": "FLOAT DEFAULT 0",
         }
         with engine.begin() as conn:
             for col, ddl in additions.items():
@@ -56,6 +70,10 @@ def _migrate_columns():
                 conn.execute(sa_text("ALTER TABLE shops ADD COLUMN plan_discount FLOAT DEFAULT 0"))
             if "reseller_id" not in cols:
                 conn.execute(sa_text("ALTER TABLE shops ADD COLUMN reseller_id INTEGER"))
+            if "store_type" not in cols:
+                conn.execute(sa_text("ALTER TABLE shops ADD COLUMN store_type VARCHAR DEFAULT 'clothing'"))
+            if "shipping_settings" not in cols:
+                conn.execute(sa_text("ALTER TABLE shops ADD COLUMN shipping_settings TEXT DEFAULT '{}'"))
 
     if insp.has_table("users"):
         cols = [c["name"] for c in insp.get_columns("users")]
@@ -147,9 +165,23 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "Origin"],
 )
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """Add browser protections to every API and static response."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+    if request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https":
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
 
 # Receipt PDFs are regenerated in-place (same filename, new content), so tell
 # browsers to always re-validate instead of serving a cached old PDF.

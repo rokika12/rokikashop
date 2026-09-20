@@ -74,7 +74,11 @@ export default function ProductRow({ products }) {
         className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 snap-x snap-mandatory no-scrollbar"
       >
         {products.map((p) => (
-          <div key={p.id} data-card className="min-w-[220px] max-w-[220px] flex-shrink-0 snap-start">
+          <div
+            key={p.id}
+            data-card
+            className={`${products.length === 1 ? 'w-full max-w-[260px]' : 'min-w-[calc(50vw-28px)] max-w-[190px] md:min-w-[220px] md:max-w-[220px]'} flex-shrink-0 snap-start`}
+          >
             <ProductCard product={p} />
           </div>
         ))}

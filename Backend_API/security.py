@@ -65,6 +65,16 @@ def get_current_shop_user(user: models.User = Depends(get_current_user)) -> mode
     return user
 
 
+def get_optional_customer(token: str = Depends(OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)), db: Session = Depends(get_db)) -> Optional[models.Customer]:
+    """Return a customer when logged in, but allow guest digital checkout."""
+    if not token:
+        return None
+    try:
+        return get_current_customer(token, db)
+    except HTTPException:
+        return None
+
+
 def get_current_customer(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.Customer:
     """Customer JWT dependency — used to require Telegram login before checkout."""
     payload = decode_token(token)

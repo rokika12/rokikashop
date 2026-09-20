@@ -1,10 +1,13 @@
 """Global configuration for the Mini Shop Platform backend."""
 import os
+from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 
 class Config:
+    ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
     SECRET_KEY = os.getenv("MINISHOP_SECRET_KEY", "mini-shop-platform-secret-key-change-me")
     ALGORITHM = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
@@ -31,6 +34,8 @@ class Config:
     # (comma-separated, e.g. "https://user.example.com,https://admin.example.com")
     _cors_env = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
     CORS_ORIGINS = _cors_env + [
+        "https://www.rovistar.shop",
+        "https://rovistar.shop",
         "http://localhost:3000",
         "http://localhost:3001",
         "http://localhost:3002",

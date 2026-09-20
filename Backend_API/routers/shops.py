@@ -93,8 +93,11 @@ def create_shop(data: schemas.ShopCreate, db: Session = Depends(get_db),
     """Admin creates a new shop + its owner account."""
     if db.query(models.Shop).filter(models.Shop.username == data.username).first():
         raise HTTPException(status_code=400, detail="Shop username already exists")
+    store_type = (data.store_type or "clothing").strip().lower()
+    if store_type not in ("clothing", "digital"):
+        raise HTTPException(status_code=400, detail="Invalid store type")
     shop = models.Shop(username=data.username, shop_name=data.shop_name or data.username,
-                       currency=data.currency)
+                       currency=data.currency, store_type=store_type)
     db.add(shop)
     db.flush()
     owner = models.User(
@@ -120,13 +123,17 @@ def update_shop(shop_id: int, data: schemas.ShopUpdate, db: Session = Depends(ge
         raise HTTPException(status_code=404, detail="Shop not found")
 
     fields = {
-        "shop_name": "shop_name", "username": "username", "logo": "logo",
+        "shop_name": "shop_name", "store_type": "store_type", "username": "username", "logo": "logo",
         "banner": "banner", "bio": "bio", "description": "description",
         "currency": "currency", "contact": "contact", "status": "status",
     }
     for src, dst in fields.items():
         val = getattr(data, src)
         if val is not None:
+            if src == "store_type":
+                val = val.strip().lower()
+                if val not in ("clothing", "digital"):
+                    raise HTTPException(status_code=400, detail="Invalid store type")
             setattr(shop, dst, val)
     if data.slideshow is not None:
         shop.slideshow = models.JSONText.dumps(data.slideshow)
@@ -138,6 +145,8 @@ def update_shop(shop_id: int, data: schemas.ShopUpdate, db: Session = Depends(ge
         shop.aba_settings = models.JSONText.dumps(data.aba_settings)
     if data.telegram_settings is not None:
         shop.telegram_settings = models.JSONText.dumps(data.telegram_settings)
+    if data.shipping_settings is not None:
+        shop.shipping_settings = models.JSONText.dumps(data.shipping_settings)
 
     log_activity(db, "update_shop", f"{user.username} updated shop {shop.username}", shop.id, user)
     db.commit()

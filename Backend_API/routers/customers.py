@@ -1,4 +1,5 @@
 """Customer CRUD endpoints + customer account auth (signup / signin)."""
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
@@ -8,6 +9,8 @@ import schemas
 from database import get_db
 from security import (create_access_token, get_current_customer, get_current_user,
                       hash_password, log_activity, require_shop_access, verify_password)
+from services import aba_service
+from services.aba_service import PaymentGatewayUnavailable, PaymentNotConfigured
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
 
@@ -101,6 +104,45 @@ def customer_signin(data: schemas.CustomerSignin, db: Session = Depends(get_db))
 @router.get("/auth/me")
 def customer_me(customer: models.Customer = Depends(get_current_customer)):
     return customer.to_dict()
+
+
+@router.get("/auth/wallet")
+def customer_wallet(customer: models.Customer = Depends(get_current_customer),
+                    db: Session = Depends(get_db)):
+    rows = db.query(models.WalletTransaction).filter(
+        models.WalletTransaction.customer_id == customer.id,
+        models.WalletTransaction.shop_id == customer.shop_id,
+    ).order_by(models.WalletTransaction.id.desc()).limit(30).all()
+    return {"balance": round(float(customer.wallet_balance or 0), 2),
+            "transactions": [row.to_dict() for row in rows]}
+
+
+@router.post("/auth/wallet/topup")
+def customer_wallet_topup(data: schemas.WalletTopup,
+                          customer: models.Customer = Depends(get_current_customer),
+                          db: Session = Depends(get_db)):
+    if data.amount < 0.10 or data.amount > 1000:
+        raise HTTPException(status_code=400, detail="Top-up amount must be between $0.10 and $1000")
+    shop = db.query(models.Shop).filter(models.Shop.id == customer.shop_id).first()
+    order = models.Order(
+        shop_id=shop.id, order_number=f"WALLET-{customer.id}-{int(datetime.utcnow().timestamp())}",
+        customer_id=customer.id, customer_name=customer.name, customer_email=customer.email,
+        customer_phone=customer.phone, items_total=data.amount, total=data.amount,
+        currency=shop.currency or "USD", payment_method="wallet_topup", payment_status="pending",
+        order_status="pending")
+    db.add(order)
+    db.flush()
+    try:
+        payment = aba_service.build_checkout_url(order, shop, success_url=data.success_url, error_url=data.error_url)
+        order.transaction_id = payment.get("transaction_id", "")
+    except PaymentNotConfigured as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+    except PaymentGatewayUnavailable as exc:
+        db.rollback()
+        raise HTTPException(status_code=502, detail=str(exc))
+    db.commit()
+    return {"order": order.to_dict(include_items=False), "payment": payment}
 
 
 @router.put("/auth/me")

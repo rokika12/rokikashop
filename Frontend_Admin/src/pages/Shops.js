@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { FiCalendar, FiEye, FiSettings, FiTrash2 } from 'react-icons/fi';
+import { FiCalendar, FiEye, FiExternalLink, FiSettings, FiTrash2 } from 'react-icons/fi';
 import { createShop, deleteShop, listShops, setShopExpiry, updateShopStatus, fullUrl } from '../api';
 import { Empty, Loading, Modal, btnDanger, btnPrimary, btnGhost, inputCls } from '../components/ui';
 
 const isExpired = (shop) => !!shop.expires_at && new Date(shop.expires_at) < new Date();
+const STORE_URL = process.env.REACT_APP_STORE_URL || 'http://localhost:3000';
 
 export default function Shops() {
   const navigate = useNavigate();
@@ -13,7 +14,8 @@ export default function Shops() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
   const [detailShop, setDetailShop] = useState(null);
-  const [form, setForm] = useState({ username: '', shop_name: '', email: '', password: '' });
+  const emptyForm = { username: '', shop_name: '', email: '', password: '', store_type: 'clothing' };
+  const [form, setForm] = useState(emptyForm);
   const [expiryDays, setExpiryDays] = useState(30);
 
   const load = () => listShops().then(setShops).finally(() => setLoading(false));
@@ -40,7 +42,7 @@ export default function Shops() {
       await createShop(form);
       toast.success('Shop created!');
       setModal(false);
-      setForm({ username: '', shop_name: '', email: '', password: '' });
+      setForm(emptyForm);
       load();
     } catch (err) {
       toast.error(err?.response?.data?.detail || 'Failed to create shop');
@@ -111,7 +113,7 @@ export default function Shops() {
                       <span className="font-semibold">{shop.shop_name || shop.username}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-gray-500">@{shop.username}</td>
+                  <td className="px-4 py-3 text-gray-500">@{shop.username}<span className={`block text-[10px] font-bold uppercase ${shop.store_type === 'digital' ? 'text-pink-600' : 'text-blue-600'}`}>{shop.store_type || 'clothing'}</span></td>
                   <td className="px-4 py-3">{shop.product_count}</td>
                   <td className="px-4 py-3">{shop.order_count}</td>
                   <td className="px-4 py-3 text-xs text-gray-500">
@@ -136,6 +138,9 @@ export default function Shops() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
+                      <a href={`${STORE_URL}/${shop.username}`} target="_blank" rel="noreferrer" className="p-2 rounded-lg hover:bg-green-50 text-green-600" title="View live website">
+                        <FiExternalLink />
+                      </a>
                       <button onClick={() => navigate(`/shops/${shop.id}`)} className="p-2 rounded-lg hover:bg-indigo-50 text-indigo-600" title="Manage shop data">
                         <FiSettings />
                       </button>
@@ -168,6 +173,14 @@ export default function Shops() {
           <div>
             <label className="text-sm font-medium text-gray-700 block">Shop Name</label>
             <input value={form.shop_name} onChange={(e) => setForm({ ...form, shop_name: e.target.value })} className={inputCls} placeholder="My Awesome Shop" />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700 block">Website Type *</label>
+            <select value={form.store_type} onChange={(e) => setForm({ ...form, store_type: e.target.value })} className={inputCls}>
+              <option value="clothing">Clothing / physical products</option>
+              <option value="digital">Digital products / accounts / codes</option>
+            </select>
+            <p className="text-xs text-gray-400 mt-1">This changes the owner dashboard product form.</p>
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700 block">Owner Email</label>

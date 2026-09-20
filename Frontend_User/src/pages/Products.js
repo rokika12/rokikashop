@@ -51,6 +51,10 @@ export default function Products() {
         setProducts(prods);
         setCategories(cats);
       })
+      .catch(() => {
+        setProducts([]);
+        setCategories([]);
+      })
       .finally(() => setLoading(false));
   }, [shop, categoryId, searchTerm, sort]);
 

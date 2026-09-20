@@ -35,6 +35,16 @@ export default function ShopLayout() {
 
   return (
     <div className="min-h-screen flex flex-col dark:bg-gray-900">
+      <div className="brand-ticker bg-[var(--brand-blue)] text-white">
+        <div className="brand-ticker-track">
+          <span>{shop.store_type === 'digital'
+            ? 'សេវាកម្មឌីជីថលពិតប្រាកដ · ទទួលបានភ្លាមៗបន្ទាប់ពីបង់ប្រាក់ · សេវាកម្មមានការគាំទ្រ'
+            : 'ទំនិញមានគុណភាព · ដឹកជញ្ជូនតាមទីតាំង · សេវាកម្មរហ័ស និងអាចទុកចិត្តបាន'}</span>
+          <span aria-hidden="true">{shop.store_type === 'digital'
+            ? 'សេវាកម្មឌីជីថលពិតប្រាកដ · ទទួលបានភ្លាមៗបន្ទាប់ពីបង់ប្រាក់ · សេវាកម្មមានការគាំទ្រ'
+            : 'ទំនិញមានគុណភាព · ដឹកជញ្ជូនតាមទីតាំង · សេវាកម្មរហ័ស និងអាចទុកចិត្តបាន'}</span>
+        </div>
+      </div>
       <ShopHeader />
       <main className="flex-1 pb-20 md:pb-0">
         <Outlet />

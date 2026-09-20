@@ -38,6 +38,7 @@ export const CartProvider = ({ children }) => {
         image,
         quantity,
         variations,
+        metadata: product.metadata || {},
         shop_id: product.shop_id,
       }];
     });

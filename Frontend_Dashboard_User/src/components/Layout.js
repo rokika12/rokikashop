@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   FiArchive, FiBarChart2, FiCreditCard, FiTrendingUp, FiFileText, FiHome, FiLogOut, FiMail, FiPackage,
-  FiSettings, FiShoppingBag, FiSmartphone, FiTag, FiUsers, FiBox,
+  FiSettings, FiShoppingBag, FiSmartphone, FiTag, FiUsers, FiBox, FiGlobe,
 } from 'react-icons/fi';
 import { useAuth } from '../contexts/AuthContext';
+import { getShopDetail } from '../api';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: <FiHome />, end: true },
@@ -16,6 +17,7 @@ const navItems = [
   { to: '/customers', label: 'Customers', icon: <FiUsers /> },
   { to: '/reports', label: 'Reports', icon: <FiBarChart2 /> },
   { to: '/receipts', label: 'Receipts', icon: <FiFileText /> },
+  { to: '/khsmm', label: 'KHSMM Services', icon: <FiGlobe /> },
   { to: '/settings', label: 'Shop Settings', icon: <FiSettings /> },
   { to: '/payment', label: 'Payment (ABA Pay)', icon: <FiSmartphone /> },
   { to: '/telegram', label: 'Telegram Bot', icon: <FiMail /> },
@@ -26,15 +28,20 @@ const navItems = [
 export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [storeType, setStoreType] = useState('clothing');
+
+  useEffect(() => {
+    if (user?.shop_id) getShopDetail(user.shop_id).then((shop) => setStoreType(shop.store_type || 'clothing')).catch(() => {});
+  }, [user?.shop_id]);
 
   return (
     <div className="flex min-h-screen">
-      <aside className="w-60 bg-slate-900 text-white flex flex-col fixed inset-y-0">
+      <aside className={`w-60 text-white flex flex-col fixed inset-y-0 ${storeType === 'digital' ? 'bg-gradient-to-b from-pink-950 to-slate-900' : 'bg-slate-900'}`}>
         <div className="p-5 border-b border-slate-700">
           <h1 className="font-bold text-lg flex items-center gap-2">
             <FiShoppingBag className="w-5 h-5" /> ROKIKA SHOP
           </h1>
-          <p className="text-xs text-slate-400">ផ្ទាំងគ្រប់គ្រងហាង</p>
+          <p className="text-xs text-slate-400">{storeType === 'digital' ? 'Digital Store Dashboard' : 'Clothing Store Dashboard'}</p>
         </div>
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
           {navItems.map((item) => (
@@ -44,7 +51,7 @@ export default function Layout() {
               end={item.end}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
-                  isActive ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800'
+                  isActive ? `${storeType === 'digital' ? 'bg-pink-500' : 'bg-blue-600'} text-white` : 'text-slate-300 hover:bg-slate-800'
                 }`
               }
             >

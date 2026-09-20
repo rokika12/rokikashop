@@ -39,10 +39,12 @@ class ShopCreate(BaseModel):
     email: str = ""
     password: str
     currency: str = "USD"
+    store_type: str = "clothing"
 
 
 class ShopUpdate(BaseModel):
     shop_name: Optional[str] = None
+    store_type: Optional[str] = None
     username: Optional[str] = None
     logo: Optional[str] = None
     banner: Optional[str] = None
@@ -53,6 +55,7 @@ class ShopUpdate(BaseModel):
     theme: Optional[Dict[str, Any]] = None
     aba_settings: Optional[Dict[str, Any]] = None
     telegram_settings: Optional[Dict[str, Any]] = None
+    shipping_settings: Optional[Dict[str, Any]] = None
     currency: Optional[str] = None
     contact: Optional[str] = None
     status: Optional[str] = None
@@ -81,6 +84,7 @@ class ShopRegister(BaseModel):
     password: str
     plan: str = "starter"
     currency: str = "USD"
+    store_type: str = "clothing"
     referral_code: str = ""
     discount: float = 0        # reseller-promo discount in $ (0 to reseller.discount_max)
     success_url: str = ""
@@ -220,6 +224,13 @@ class OrderCreate(BaseModel):
     shipping_fee: float = 0
     discount: float = 0
     currency: str = "USD"
+    payment_method: str = "khqr"
+
+
+class WalletTopup(BaseModel):
+    amount: float
+    success_url: str = ""
+    error_url: str = ""
 
 
 class POSOrderCreate(BaseModel):

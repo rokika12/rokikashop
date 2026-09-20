@@ -2,18 +2,18 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FiCreditCard, FiHeadphones, FiShoppingBag, FiTruck } from 'react-icons/fi';
 import { useShop } from '../contexts/ShopContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { useLanguage } from '../i18n';
 import { getProducts, getCategories, fullUrl } from '../api';
 import Slideshow from '../components/Slideshow';
 import CategoryNav from '../components/CategoryNav';
 import ProductCard from '../components/ProductCard';
 import ProductRow from '../components/ProductRow';
-import SocialLinks from '../components/SocialLinks';
-import ShopLogo from '../components/ShopLogo';
 import ShopSearchBar from '../components/ShopSearchBar';
 
 export default function ShopHome() {
   const { shop } = useShop();
+  const { isDark } = useTheme();
   const { t } = useLanguage();
   const [featured, setFeatured] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -33,10 +33,16 @@ export default function ShopHome() {
         setAllProducts(prods);
         setCategories(cats);
       })
+      .catch(() => {
+        setFeatured([]);
+        setAllProducts([]);
+        setCategories([]);
+      })
       .finally(() => setLoading(false));
   }, [shop]);
 
   if (!shop) return null;
+  const isDigitalStore = shop.store_type === 'digital' || allProducts.some((product) => product.metadata?.product_type === 'digital');
 
   return (
     <div>
@@ -51,22 +57,26 @@ export default function ShopHome() {
         <Slideshow slides={shop.slideshow} />
       </div>
 
-      {/* Shop intro */}
-      <section className="max-w-7xl mx-auto px-4 pb-6">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 flex flex-col sm:flex-row items-center gap-4">
-          <ShopLogo shop={shop} className="w-20 h-20 rounded-full" textClassName="text-3xl" />
-          <div className="text-center sm:text-left flex-1">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{shop.shop_name || shop.username}</h1>
-            <p className="text-gray-500 dark:text-gray-400 mt-1">{shop.bio || shop.description}</p>
-            <div className="mt-2 flex justify-center sm:justify-start">
-              <SocialLinks />
+      {/* Digital stores may promote offers; clothing stores keep a normal product grid. */}
+      {isDigitalStore && !loading && allProducts.length > 0 && (
+        <section className="mx-auto max-w-7xl px-4 pb-6">
+          <div className={`overflow-hidden rounded-2xl border shadow-lg ${isDark ? 'border-slate-700 bg-slate-950 text-white' : 'border-blue-100 bg-white text-slate-900'}`}>
+            <div className="overflow-hidden py-3">
+              <div className="promo-marquee flex w-max items-center gap-4">
+                {[...allProducts, ...allProducts].map((product, index) => (
+                  <Link key={`${product.id}-${index}`} to={`/${shop.username}/product/${product.id}`} className={`flex items-center gap-3 rounded-xl px-3 py-2 whitespace-nowrap ${isDark ? 'bg-white/10 hover:bg-white/20' : 'bg-slate-50 hover:bg-blue-50'}`}>
+                    <div className={`h-12 w-12 overflow-hidden rounded-lg ${isDark ? 'bg-white/10' : 'bg-slate-200'}`}>
+                      {product.images?.[0] && <img src={fullUrl(product.images[0])} alt={product.name} className="h-full w-full object-cover" />}
+                    </div>
+                    <span className="font-bold text-blue-700 dark:text-white">{product.name}</span>
+                    <span className="font-black text-blue-600 dark:text-amber-300">${Number(product.sale_price ?? product.price).toFixed(2)}</span>
+                  </Link>
+                ))}
+              </div>
             </div>
           </div>
-          <Link to={`/${shop.username}/products`} className="btn-primary px-6 py-2.5 rounded-xl font-semibold whitespace-nowrap">
-            {t('shopNow')}
-          </Link>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Categories moved to the sticky strip at the top */}
 
@@ -141,6 +151,17 @@ export default function ShopHome() {
       )}
 
       {/* About strip */}
+      {shop.store_type === 'clothing' && (shop.shipping_settings?.carrier || shop.shipping_settings?.address || shop.shipping_settings?.phone) && (
+        <section className="max-w-7xl mx-auto px-4 py-6">
+          <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5 text-center">
+            <h2 className="font-bold text-blue-900">ការដឹកជញ្ជូន</h2>
+            <p className="text-sm text-blue-800 mt-2">
+              {[shop.shipping_settings.carrier, shop.shipping_settings.address, shop.shipping_settings.phone].filter(Boolean).join(' · ')}
+            </p>
+          </div>
+        </section>
+      )}
+
       <section className="bg-white dark:bg-gray-800 mt-8">
         <div className="max-w-7xl mx-auto px-4 py-10 grid md:grid-cols-3 gap-6 text-center">
           <div className="p-6">

@@ -65,6 +65,7 @@ export default function ShopSettings() {
   const set = (field) => (e) => setShop({ ...shop, [field]: e.target.value });
   const setTheme = (field) => (e) => setShop({ ...shop, theme: { ...(shop.theme || {}), [field]: e.target.value } });
   const setSocial = (field) => (e) => setShop({ ...shop, social_media: { ...(shop.social_media || {}), [field]: e.target.value } });
+  const setShipping = (field) => (e) => setShop({ ...shop, shipping_settings: { ...(shop.shipping_settings || {}), [field]: e.target.value } });
 
   const handleUpload = async (e, field) => {
     const file = e.target.files?.[0];
@@ -103,6 +104,7 @@ export default function ShopSettings() {
         slideshow: shop.slideshow || [],
         social_media: shop.social_media || {},
         theme: shop.theme || {},
+        shipping_settings: shop.shipping_settings || {},
         contact: shop.contact, currency: shop.currency,
       });
       toast.success('Shop settings saved!');
@@ -176,6 +178,29 @@ export default function ShopSettings() {
         </div>
       </div>
 
+        {shop.store_type === 'clothing' && (
+          <div className="bg-white rounded-xl shadow-sm p-6 space-y-4 border border-blue-100">
+            <div>
+              <h2 className="font-bold text-blue-700">Clothing delivery details</h2>
+              <p className="text-sm text-gray-500 mt-1">These details help customers know where and how clothing orders are delivered.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block">Delivery company</label>
+                <input value={shop.shipping_settings?.carrier || ''} onChange={setShipping('carrier')} className={inputCls} placeholder="Vireak Buntham" />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block">Pickup / delivery phone</label>
+                <input value={shop.shipping_settings?.phone || ''} onChange={setShipping('phone')} className={inputCls} placeholder="012 345 678" />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block">Location / address</label>
+                <input value={shop.shipping_settings?.address || ''} onChange={setShipping('address')} className={inputCls} placeholder="Branch or pickup location" />
+              </div>
+            </div>
+          </div>
+        )}
+
       <div className="bg-white rounded-xl shadow-sm p-6">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-bold">Slideshow Banners</h2>
@@ -212,6 +237,20 @@ export default function ShopSettings() {
 
       <div className="bg-white rounded-xl shadow-sm p-6 space-y-4">
         <h2 className="font-bold">Theme Colors</h2>
+        <div>
+          <label className="text-sm font-medium text-gray-700 block mb-2">Quick theme</label>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { name: 'Pink + Blue', primary: '#ef3d78', secondary: '#2563eb' },
+              { name: 'Black + White', primary: '#111827', secondary: '#f8fafc' },
+              { name: 'Blue + White', primary: '#2563eb', secondary: '#ffffff' },
+            ].map((preset) => (
+              <button type="button" key={preset.name} onClick={() => setShop({ ...shop, theme: { ...(shop.theme || {}), primary: preset.primary, secondary: preset.secondary } })} className="rounded-lg border px-3 py-2 text-xs font-bold hover:border-indigo-500">
+                <span className="inline-block w-3 h-3 rounded-full mr-1" style={{ backgroundColor: preset.primary }} />{preset.name}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="text-sm font-medium text-gray-700 block">Primary Color</label>
@@ -230,7 +269,7 @@ export default function ShopSettings() {
           <div>
             <label className="text-sm font-medium text-gray-700 block">Font Family</label>
             <select value={shop.theme?.font_family || 'Inter'} onChange={setTheme('font_family')} className={inputCls}>
-              {['Inter', 'Poppins', 'Roboto', 'Montserrat', 'Open Sans', 'Lato', 'Nunito'].map((f) => <option key={f} value={f}>{f}</option>)}
+              {['Nunito', 'Plus Jakarta Sans', 'Poppins', 'Montserrat', 'Inter', 'Roboto', 'Open Sans', 'Lato'].map((f) => <option key={f} value={f}>{f}</option>)}
             </select>
           </div>
         </div>

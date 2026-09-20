@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-export const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+export const API_BASE = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
 
 const api = axios.create({ baseURL: API_BASE });
 
@@ -52,6 +52,17 @@ export const createShop = (data) => api.post('/api/shops', data).then((r) => r.d
 export const updateShopStatus = (id, status) => api.put(`/api/shops/${id}/status`, { status }).then((r) => r.data);
 export const deleteShop = (id) => api.delete(`/api/shops/${id}`).then((r) => r.data);
 export const getShopDetail = (id) => api.get(`/api/shops/${id}/detail`).then((r) => r.data);
+export const updateShop = (id, data) => api.put(`/api/shops/${id}/update`, data).then((r) => r.data);
+export const uploadImage = (file) => {
+  const fd = new FormData();
+  fd.append('file', file);
+  return api.post('/api/uploads', fd).then((r) => r.data);
+};
+export const uploadProductImages = (files) => {
+  const fd = new FormData();
+  files.forEach((file) => fd.append('files', file));
+  return api.post('/api/uploads/product', fd).then((r) => r.data);
+};
 export const setShopExpiry = (id, days) => api.post(`/api/shops/${id}/set-expiry`, { days }).then((r) => r.data);
 export const setShopLimits = (id, data) => api.post(`/api/shops/${id}/set-limits`, data).then((r) => r.data);
 

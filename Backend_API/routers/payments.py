@@ -7,7 +7,7 @@ import schemas
 from database import get_db
 from security import get_current_user, log_activity, require_shop_access
 from services import aba_service, pdf_service, stock_service, telegram_service
-from services.aba_service import PaymentNotConfigured
+from services.aba_service import PaymentGatewayUnavailable, PaymentNotConfigured
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 
@@ -44,6 +44,29 @@ def _mark_paid(db, order, transaction_id, amount=None):
         return False
 
     db.refresh(order)
+    if order.payment_method == "wallet_topup":
+        customer = db.query(models.Customer).filter(models.Customer.id == order.customer_id).first()
+        if customer:
+            customer.wallet_balance = round(float(customer.wallet_balance or 0) + float(order.total or 0), 2)
+            db.add(models.WalletTransaction(customer_id=customer.id, shop_id=order.shop_id,
+                                            amount=order.total, transaction_type="topup",
+                                            reference=order.order_number, note="ABA wallet top-up"))
+            db.commit()
+        return True
+    # Consume one digital credential from each paid line item. The order keeps
+    # a private snapshot for delivery, while the product pool loses that entry.
+    for item in order.items:
+        product = db.query(models.Product).filter(models.Product.id == item.product_id).first()
+        if not product:
+            continue
+        metadata = models.JSONText.loads(product.metadata_json, {})
+        delivery = models.JSONText.loads(item.variations, {}).get("_digital_delivery")
+        pool = (metadata.get("digital_delivery") or {}).get("credentials") or []
+        if delivery and pool:
+            remaining = [entry for entry in pool if entry != delivery]
+            metadata["digital_delivery"]["credentials"] = remaining
+            product.metadata_json = models.JSONText.dumps(metadata)
+
     # ⬇️ Auto-deduct stock on payment success (only the winning request reaches here)
     order._stock_summary = stock_service.deduct_stock_for_order(db, order)
     db.commit()
@@ -95,6 +118,8 @@ def create_aba_payment(data: schemas.PaymentCreate, db: Session = Depends(get_db
             order, shop, success_url=data.success_url, error_url=data.error_url, cancel_url=data.cancel_url)
     except PaymentNotConfigured as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except PaymentGatewayUnavailable as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
     order.transaction_id = result["transaction_id"]
     db.commit()

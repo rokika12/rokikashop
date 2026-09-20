@@ -85,6 +85,14 @@ export default function CreateShop() {
     }
   };
 
+  const goToFormStep = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setStep('form');
+  };
+
   const alreadyPaid = async () => {
     if (!reg) return;
     setChecking(true);
@@ -101,6 +109,21 @@ export default function CreateShop() {
 
   const activePlan = plans.find((p) => p.id === plan) || {};
   const stepIdx = step === 'plan' ? 0 : step === 'done' ? 2 : 1;
+
+  if (process.env.REACT_APP_ALLOW_PUBLIC_SHOP_REGISTRATION !== 'true') {
+    const adminUrl = process.env.REACT_APP_ADMIN_URL || 'http://localhost:3001/shops';
+    return (
+      <div className="min-h-screen bg-[#011F46] text-white flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white text-gray-900 rounded-2xl p-8 text-center shadow-2xl">
+          <FiShoppingBag className="w-12 h-12 mx-auto mb-4 text-[#FB6E08]" />
+          <h1 className="text-2xl font-bold">បើក Website ឲ្យភ្ញៀវ</h1>
+          <p className="text-gray-500 mt-3">អ្នកជាម្ចាស់ Platform។ ចូល Admin Panel ដើម្បីបើក Free Standard Website ឲ្យភ្ញៀវ និងជ្រើសប្រភេទ Clothing ឬ Digital។</p>
+          <a href={adminUrl} className="inline-block mt-6 bg-[#FB6E08] text-white font-bold px-6 py-3 rounded-xl">បើក Admin Panel</a>
+          <p className="text-xs text-gray-400 mt-4">Admin Panel → Shops → Create Shop</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -157,7 +180,7 @@ export default function CreateShop() {
               ))}
             </div>
             <div className="flex justify-end">
-              <button onClick={() => setStep('form')} className="btn-primary px-6 py-3 rounded-xl font-bold">Continue</button>
+              <button type="button" onClick={goToFormStep} className="btn-primary px-6 py-3 rounded-xl font-bold">Continue</button>
             </div>
           </div>
         )}

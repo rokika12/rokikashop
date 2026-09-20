@@ -38,6 +38,10 @@ class PaymentNotConfigured(Exception):
     """Raised when a shop has not configured its ABA Pay credentials."""
 
 
+class PaymentGatewayUnavailable(Exception):
+    """Raised when ABA does not return a real KHQR for the transaction."""
+
+
 def aba_hash(secret_key: str, transaction_id: str, amount: str, success_url: str, remark: str) -> str:
     raw = f"{secret_key}{transaction_id}{amount}{success_url}{remark}"
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()
@@ -85,6 +89,7 @@ def request_direct_qr(profile_id: str, secret_key: str, transaction_id: str,
     }
     with httpx.Client(timeout=30) as client:
         resp = client.post(url, data=payload)
+    resp.raise_for_status()
     return resp.json()
 
 
@@ -133,9 +138,14 @@ def build_checkout_url(order, shop, success_url="", error_url="", cancel_url="")
     # shows only the "Pay with ABA Pay" redirect button (never a fake QR).
     try:
         qr = request_direct_qr(profile_id, secret_key, tran_id, amount, success_url, remark)
-        if qr.get("responseCode") == 0 and qr.get("data"):
-            emv = qr["data"].get("qr", "")
-            qr_url = qr["data"].get("qr_url", "")
+        response_code = str(qr.get("responseCode", qr.get("response_code", ""))).strip()
+        data = qr.get("data") or {}
+        if isinstance(data, list):
+            data = data[0] if data else {}
+        if response_code in ("0", "00") and data:
+            emv = (data.get("qr") or data.get("qr_string") or data.get("qr_content")
+                   or data.get("qrData") or data.get("qr_code") or "")
+            qr_url = data.get("qr_url") or data.get("qrUrl") or ""
             if emv:
                 result["qr_content"] = emv
                 # Always render the QR locally (PNG served by this API host) so the
@@ -144,8 +154,12 @@ def build_checkout_url(order, shop, success_url="", error_url="", cancel_url="")
                 result["qr_code_url"] = generate_qr_image(emv, f"qr_{tran_id}.png")
             elif qr_url:
                 result["qr_code_url"] = qr_url
-    except Exception:
-        pass
+            else:
+                result["qr_error"] = qr.get("responseMessage") or "ABA returned no QR payload"
+        else:
+            result["qr_error"] = qr.get("responseMessage") or qr.get("message") or f"ABA response code: {response_code or 'unknown'}"
+    except Exception as exc:
+        result["qr_error"] = str(exc)
 
     return result
 

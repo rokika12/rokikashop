@@ -5,13 +5,14 @@ import { FiArrowLeft, FiEdit, FiEye, FiPlus, FiTrash2 } from 'react-icons/fi';
 import {
   createCategory, createProduct, deleteCategory, deleteCustomer, deleteOrder,
   deleteProduct, exportShopBackup, fullUrl, getOrder, getShopDetail,
-  listShopCategories, listShopCustomers, listShopOrders, listShopProducts,
-  setShopExpiry, setShopLimits, updateCategory, updateOrderStatus, updateProduct, updateShopStatus,
+  listShopCategories, listShopCustomers, listShopOrders, listShopProducts, uploadImage, uploadProductImages,
+  setShopExpiry, setShopLimits, updateCategory, updateOrderStatus, updateProduct, updateShop, updateShopStatus,
 } from '../api';
 import { Empty, Loading, Modal, btnDanger, btnGhost, btnPrimary, inputCls } from '../components/ui';
 
 const TABS = ['Overview', 'Products', 'Orders', 'Customers', 'Categories'];
 const isExpired = (shop) => !!shop?.expires_at && new Date(shop.expires_at) < new Date();
+const STORE_URL = process.env.REACT_APP_STORE_URL || 'http://localhost:3000';
 
 export default function ShopDetail() {
   const { id } = useParams();
@@ -74,7 +75,7 @@ export default function ShopDetail() {
           {shop.status === 'active'
             ? <button onClick={toggleStatus} className={btnGhost}>Suspend</button>
             : <button onClick={toggleStatus} className={btnPrimary}>Activate</button>}
-          <a href={`http://localhost:3000/${shop.username}`} target="_blank" rel="noreferrer" className={btnGhost}>Visit ↗</a>
+          <a href={`${STORE_URL}/${shop.username}`} target="_blank" rel="noreferrer" className={btnGhost}>View Website ↗</a>
         </div>
       </div>
 
@@ -99,6 +100,16 @@ export default function ShopDetail() {
 function OverviewTab({ shop, setExpiry, toggleStatus, onSaved }) {
   const [pLimit, setPLimit] = useState(shop.max_products ?? '');
   const [cLimit, setCLimit] = useState(shop.max_categories ?? '');
+  const [payment, setPayment] = useState({
+    profile_id: shop.aba_settings?.profile_id || '',
+    secret_key: shop.aba_settings?.secret_key || '',
+    test_mode: shop.aba_settings?.test_mode !== false,
+  });
+  const [brand, setBrand] = useState({
+    shop_name: shop.shop_name || '', store_type: shop.store_type || 'clothing', logo: shop.logo || '', banner: shop.banner || '',
+    slideshow: shop.slideshow || [], bio: shop.bio || '', description: shop.description || '', contact: shop.contact || '',
+    social_media: shop.social_media || {},
+  });
 
   const saveLimits = async () => {
     try {
@@ -114,6 +125,45 @@ function OverviewTab({ shop, setExpiry, toggleStatus, onSaved }) {
     }
   };
 
+  const savePayment = async () => {
+    try {
+      await updateShop(shop.id, { aba_settings: payment });
+      toast.success('Payment settings saved');
+      onSaved();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Failed to save payment settings');
+    }
+  };
+
+  const uploadBrandImage = async (field, file) => {
+    if (!file) return;
+    try {
+      const result = await uploadImage(file);
+      setBrand((value) => ({ ...value, [field]: result.url }));
+      toast.success(`${field} uploaded`);
+    } catch (e) { toast.error(e?.response?.data?.detail || 'Image upload failed'); }
+  };
+
+  const uploadSlides = async (files) => {
+    if (!files.length) return;
+    try {
+      const result = await uploadProductImages(Array.from(files));
+      setBrand((value) => ({ ...value, slideshow: [...value.slideshow, ...result.urls] }));
+      toast.success('Front images uploaded');
+    } catch (e) { toast.error(e?.response?.data?.detail || 'Image upload failed'); }
+  };
+
+  const removeBrandImage = (field) => setBrand((value) => ({ ...value, [field]: '' }));
+  const removeSlide = (image) => setBrand((value) => ({ ...value, slideshow: value.slideshow.filter((item) => item !== image) }));
+
+  const saveBrand = async () => {
+    try {
+      await updateShop(shop.id, brand);
+      toast.success('Website branding saved');
+      onSaved();
+    } catch (e) { toast.error(e?.response?.data?.detail || 'Failed to save website branding'); }
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-sm p-6">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -123,6 +173,45 @@ function OverviewTab({ shop, setExpiry, toggleStatus, onSaved }) {
         <div className="bg-slate-50 rounded-lg p-4"><p className="text-2xl font-bold">{shop.currency || 'USD'}</p><p className="text-xs text-gray-500">Currency</p></div>
       </div>
       <div className="space-y-4 text-sm">
+        <div className="border-b pb-5">
+          <p className="font-semibold mb-3">Website branding</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="md:col-span-2">
+              <label className="text-xs text-gray-500 block mb-1">Website / shop name</label>
+              <input value={brand.shop_name} onChange={(e) => setBrand({ ...brand, shop_name: e.target.value })} className={inputCls} placeholder="My Digital Store" />
+            </div>
+            <div className="md:col-span-2">
+              <label className="text-xs text-gray-500 block mb-1">Website type</label>
+              <select value={brand.store_type} onChange={(e) => setBrand({ ...brand, store_type: e.target.value })} className={inputCls}>
+                <option value="clothing">Clothing / physical products</option>
+                <option value="digital">Digital products / accounts / codes</option>
+              </select>
+            </div>
+            <label className="border rounded-lg p-3 cursor-pointer hover:bg-slate-50">
+              <span className="text-xs font-semibold block mb-2">Logo</span>
+              <input type="file" accept="image/*" onChange={(e) => uploadBrandImage('logo', e.target.files?.[0])} className="text-xs w-full" />
+              {brand.logo && <div className="mt-2 flex items-center gap-2"><img src={fullUrl(brand.logo)} alt="Logo preview" className="h-16 w-16 rounded-full object-cover" /><button type="button" onClick={() => removeBrandImage('logo')} className="text-xs text-red-600">លុប</button></div>}
+            </label>
+            <label className="border rounded-lg p-3 cursor-pointer hover:bg-slate-50">
+              <span className="text-xs font-semibold block mb-2">Main banner / hero image</span>
+              <input type="file" accept="image/*" onChange={(e) => uploadBrandImage('banner', e.target.files?.[0])} className="text-xs w-full" />
+              {brand.banner && <div className="mt-2 flex items-center gap-2"><img src={fullUrl(brand.banner)} alt="Banner preview" className="h-16 w-full rounded object-cover" /><button type="button" onClick={() => removeBrandImage('banner')} className="text-xs text-red-600">លុប</button></div>}
+            </label>
+            <div className="md:col-span-2 border rounded-lg p-3">
+              <span className="text-xs font-semibold block mb-2">Front slideshow images</span>
+              <input type="file" accept="image/*" multiple onChange={(e) => uploadSlides(e.target.files)} className="text-xs w-full" />
+              {brand.slideshow.length > 0 && <div className="flex gap-2 mt-2 overflow-x-auto">{brand.slideshow.map((image) => <div key={image} className="relative shrink-0"><img src={fullUrl(image)} alt="Slide" className="h-14 w-24 rounded object-cover" /><button type="button" onClick={() => removeSlide(image)} className="absolute right-0 top-0 rounded-bl bg-red-600 px-1 text-xs text-white">x</button></div>)}</div>}
+            </div>
+            <textarea value={brand.description} onChange={(e) => setBrand({ ...brand, description: e.target.value })} className={`${inputCls} md:col-span-2`} rows="2" placeholder="Website description" />
+            <input value={brand.contact} onChange={(e) => setBrand({ ...brand, contact: e.target.value })} className={`${inputCls} md:col-span-2`} placeholder="Contact / Telegram / phone" />
+            <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {['facebook', 'instagram', 'telegram', 'tiktok', 'youtube', 'whatsapp'].map((network) => (
+                <input key={network} value={brand.social_media?.[network] || ''} onChange={(e) => setBrand({ ...brand, social_media: { ...brand.social_media, [network]: e.target.value } })} className={inputCls} placeholder={`${network} link`} />
+              ))}
+            </div>
+          </div>
+          <button onClick={saveBrand} className={`${btnPrimary} mt-3`}>Save Website Branding</button>
+        </div>
         <div><p className="font-semibold mb-1">Bio</p><p className="text-gray-600">{shop.bio || '—'}</p></div>
         <div><p className="font-semibold mb-1">Contact</p><p className="text-gray-600">{shop.contact || '—'}</p></div>
         <div><p className="font-semibold mb-1">Status</p>
@@ -152,8 +241,24 @@ function OverviewTab({ shop, setExpiry, toggleStatus, onSaved }) {
           </div>
           <button onClick={saveLimits} className={`${btnPrimary} mt-3`}>Save Limits</button>
         </div>
-        <div><p className="font-semibold mb-1">ABA Pay</p>
-          <p className="text-gray-600">{shop.aba_settings?.profile_id ? `Profile: ${shop.aba_settings.profile_id}` : 'Not configured'}{shop.aba_settings?.test_mode ? ' · Sandbox mode' : ''}</p>
+        <div className="border-t pt-4">
+          <p className="font-semibold mb-1">ABA Pay / KHQR settings</p>
+          <p className="text-xs text-gray-500 mb-3">Enter the merchant credentials used by this shop for real payments.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-2xl">
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Profile ID / API ID</label>
+              <input value={payment.profile_id} onChange={(e) => setPayment({ ...payment, profile_id: e.target.value })} className={inputCls} placeholder="ABA profile ID" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Secret Key / API Key</label>
+              <input type="password" value={payment.secret_key} onChange={(e) => setPayment({ ...payment, secret_key: e.target.value })} className={inputCls} placeholder="ABA secret key" />
+            </div>
+          </div>
+          <label className="flex items-center gap-2 mt-3 text-sm text-gray-600">
+            <input type="checkbox" checked={payment.test_mode} onChange={(e) => setPayment({ ...payment, test_mode: e.target.checked })} />
+            Sandbox / test mode
+          </label>
+          <button onClick={savePayment} className={`${btnPrimary} mt-3`}>Save Payment Settings</button>
         </div>
       </div>
     </div>
@@ -166,17 +271,20 @@ function ProductsTab({ shopId }) {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ name: '', price: '', quantity: '', category_id: '', status: 'active', featured: false });
+  const emptyCredential = { email: '', password: '', license_key: '' };
+  const [form, setForm] = useState({ name: '', price: '', sale_price: '', quantity: '', category_id: '', status: 'active', featured: false, product_type: 'digital', duration: '', delivery_email: '', delivery_password: '', license_key: '', credentials: [emptyCredential], images: [], promo_enabled: false, promo_text: '', promo_start: '', promo_end: '' });
 
   const load = () => Promise.all([listShopProducts(shopId), listShopCategories(shopId)])
     .then(([p, c]) => { setProducts(p); setCats(c); })
+    .catch((e) => { setProducts([]); setCats([]); toast.error(e?.response?.data?.detail || 'Could not connect to the Backend API'); })
     .finally(() => setLoading(false));
   useEffect(() => { load(); }, [shopId]);
 
-  const openCreate = () => { setEditing(null); setForm({ name: '', price: '', quantity: '', category_id: '', status: 'active', featured: false }); setModal(true); };
+  const openCreate = () => { setEditing(null); setForm({ name: '', price: '', sale_price: '', quantity: '', category_id: '', status: 'active', featured: false, product_type: 'digital', duration: '', delivery_email: '', delivery_password: '', license_key: '', credentials: [emptyCredential], images: [], promo_enabled: false, promo_text: '', promo_start: '', promo_end: '' }); setModal(true); };
   const openEdit = (p) => {
     setEditing(p);
-    setForm({ name: p.name, price: p.price ?? '', quantity: p.quantity ?? '', category_id: p.category_id ?? '', status: p.status || 'active', featured: !!p.featured });
+    const savedCredentials = p.metadata?.digital_delivery?.credentials || [];
+    setForm({ name: p.name, price: p.price ?? '', sale_price: p.sale_price ?? '', quantity: p.quantity ?? '', category_id: p.category_id ?? '', status: p.status || 'active', featured: !!p.featured, product_type: p.metadata?.product_type || 'digital', duration: p.metadata?.duration || '', delivery_email: p.metadata?.digital_delivery?.email || '', delivery_password: p.metadata?.digital_delivery?.password || '', license_key: p.metadata?.digital_delivery?.license_key || '', credentials: savedCredentials.length ? savedCredentials : [emptyCredential], images: p.images || [], promo_enabled: !!p.metadata?.promotion?.enabled, promo_text: p.metadata?.promotion?.text || '', promo_start: p.metadata?.promotion?.start_at || '', promo_end: p.metadata?.promotion?.end_at || '' });
     setModal(true);
   };
 
@@ -185,9 +293,11 @@ function ProductsTab({ shopId }) {
     if (!form.name) { toast.error('Name is required'); return; }
     const payload = {
       shop_id: shopId, name: form.name, description: '',
-      price: Number(form.price) || 0, quantity: Number(form.quantity) || 0,
+      price: Number(form.price) || 0, sale_price: form.sale_price === '' ? null : Number(form.sale_price), quantity: form.product_type === 'digital' ? form.credentials.filter((entry) => entry.email || entry.password).length : Number(form.quantity) || 0,
       category_id: form.category_id ? Number(form.category_id) : null,
+      images: form.images,
       status: form.status, featured: form.featured,
+      metadata: { product_type: form.product_type, duration: form.duration, digital_delivery: { email: form.delivery_email, password: form.delivery_password, license_key: form.license_key, credentials: form.credentials.filter((entry) => entry.email || entry.password) }, promotion: { enabled: form.promo_enabled, text: form.promo_text, start_at: form.promo_start, end_at: form.promo_end } },
     };
     try {
       if (editing) { await updateProduct(editing.id, payload); toast.success('Product updated'); }
@@ -257,12 +367,50 @@ function ProductsTab({ shopId }) {
 }
 
 function ProductModal({ modal, editing, form, setForm, submit, setModal, cats }) {
+  const uploadImages = async (files) => {
+    if (!files.length) return;
+    try {
+      const result = await uploadProductImages(Array.from(files));
+      setForm((value) => ({ ...value, images: [...value.images, ...result.urls] }));
+      toast.success('Product images uploaded');
+    } catch (e) { toast.error(e?.response?.data?.detail || 'Image upload failed'); }
+  };
+
   return (
     <Modal open={modal} title={editing ? `Edit ${editing.name}` : 'Add Product'} onClose={() => setModal(false)}>
       <form onSubmit={submit} className="space-y-4">
         <div>
+          <label className="text-sm font-medium text-gray-700 block">Product type</label>
+          <select value={form.product_type} onChange={(e) => setForm({ ...form, product_type: e.target.value })} className={inputCls}>
+            <option value="digital">Digital product / subscription</option>
+            <option value="physical">Physical product</option>
+          </select>
+        </div>
+        <div>
+          <label className="text-sm font-medium text-gray-700 block">Duration</label>
+          <input value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} className={inputCls} placeholder="1 week, 1 month, 3 months" />
+        </div>
+        {form.product_type === 'digital' && <div className="border border-indigo-100 bg-indigo-50 rounded-lg p-3 space-y-3">
+          <p className="text-sm font-semibold text-indigo-800">Digital delivery credentials</p>
+          <p className="text-xs text-indigo-600">ដាក់ Gmail និង Password តាមចំនួនស្តុក។ អតិថិជនទិញមួយ នឹងទទួលបានមួយឈុត ហើយឈុតនោះត្រូវបានដកចេញបន្ទាប់ពីបង់ប្រាក់។</p>
+          {(form.credentials || []).map((entry, index) => (
+            <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+              <input value={entry.email} onChange={(e) => setForm({ ...form, credentials: form.credentials.map((row, i) => i === index ? { ...row, email: e.target.value } : row) })} className={inputCls} placeholder={`Gmail ឈុតទី ${index + 1}`} />
+              <input value={entry.password} onChange={(e) => setForm({ ...form, credentials: form.credentials.map((row, i) => i === index ? { ...row, password: e.target.value } : row) })} className={inputCls} placeholder="Password" />
+              <button type="button" onClick={() => setForm({ ...form, credentials: form.credentials.filter((_, i) => i !== index) })} disabled={form.credentials.length === 1} className="rounded-lg bg-red-100 px-3 py-2 text-xs font-bold text-red-700 disabled:opacity-40">លុប</button>
+            </div>
+          ))}
+          <button type="button" onClick={() => setForm({ ...form, credentials: [...form.credentials, { email: '', password: '', license_key: '' }] })} className={btnGhost}>+ បន្ថែម Gmail / Password</button>
+          <p className="text-xs font-semibold text-indigo-700">ស្តុកបច្ចុប្បន្ន: {(form.credentials || []).filter((entry) => entry.email || entry.password).length}</p>
+        </div>}
+        <div>
           <label className="text-sm font-medium text-gray-700 block">Name *</label>
           <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputCls} />
+        </div>
+        <div className="border border-slate-200 rounded-lg p-3">
+          <label className="text-sm font-medium text-gray-700 block mb-2">Product images</label>
+          <input type="file" accept="image/*" multiple onChange={(e) => uploadImages(e.target.files)} className="text-xs w-full" />
+          {form.images.length > 0 && <div className="flex flex-wrap gap-2 mt-3">{form.images.map((image, index) => <div key={image} className="relative"><img src={fullUrl(image)} alt="Product preview" className="h-16 w-16 rounded object-cover" /><button type="button" onClick={() => setForm({ ...form, images: form.images.filter((_, i) => i !== index) })} className="absolute -right-1 -top-1 rounded-full bg-red-500 px-1 text-xs text-white">x</button></div>)}</div>}
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -270,9 +418,18 @@ function ProductModal({ modal, editing, form, setForm, submit, setModal, cats })
             <input type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={inputCls} />
           </div>
           <div>
+            <label className="text-sm font-medium text-gray-700 block">Sale price</label>
+            <input type="number" step="0.01" value={form.sale_price} onChange={(e) => setForm({ ...form, sale_price: e.target.value })} className={inputCls} placeholder="Optional discount price" />
+          </div>
+          <div>
             <label className="text-sm font-medium text-gray-700 block">Quantity</label>
             <input type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className={inputCls} />
           </div>
+        </div>
+        <div className="border border-amber-200 bg-amber-50 rounded-lg p-3 space-y-3">
+          <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={form.promo_enabled} onChange={(e) => setForm({ ...form, promo_enabled: e.target.checked })} /> Show in moving promotion bar</label>
+          <input value={form.promo_text} onChange={(e) => setForm({ ...form, promo_text: e.target.value })} className={inputCls} placeholder="Promotion text, e.g. CapCut Pro special offer" />
+          <div className="grid grid-cols-2 gap-2"><input type="datetime-local" value={form.promo_start} onChange={(e) => setForm({ ...form, promo_start: e.target.value })} className={inputCls} /><input type="datetime-local" value={form.promo_end} onChange={(e) => setForm({ ...form, promo_end: e.target.value })} className={inputCls} /></div>
         </div>
         <div>
           <label className="text-sm font-medium text-gray-700 block">Category</label>
@@ -306,7 +463,13 @@ function OrdersTab({ shopId }) {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState(null);
 
-  const load = () => listShopOrders(shopId).then(setOrders).finally(() => setLoading(false));
+  const load = () => listShopOrders(shopId)
+    .then(setOrders)
+    .catch((e) => {
+      setOrders([]);
+      toast.error(e?.response?.data?.detail || 'Could not connect to the Backend API');
+    })
+    .finally(() => setLoading(false));
   useEffect(() => { load(); }, [shopId]);
 
   const setStatus = async (o, status) => {
@@ -398,7 +561,10 @@ function CustomersTab({ shopId }) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
-  const load = () => listShopCustomers(shopId, search).then(setCustomers).finally(() => setLoading(false));
+  const load = () => listShopCustomers(shopId, search)
+    .then(setCustomers)
+    .catch((e) => { setCustomers([]); toast.error(e?.response?.data?.detail || 'Could not connect to the Backend API'); })
+    .finally(() => setLoading(false));
   useEffect(() => { load(); }, [shopId, search]);
 
   const remove = async (c) => {
@@ -454,7 +620,10 @@ function CategoriesTab({ shopId }) {
   const [name, setName] = useState('');
   const [editing, setEditing] = useState(null);
 
-  const load = () => listShopCategories(shopId).then(setCats).finally(() => setLoading(false));
+  const load = () => listShopCategories(shopId)
+    .then(setCats)
+    .catch((e) => { setCats([]); toast.error(e?.response?.data?.detail || 'Could not connect to the Backend API'); })
+    .finally(() => setLoading(false));
   useEffect(() => { load(); }, [shopId]);
 
   const submit = async (e) => {
@@ -462,9 +631,12 @@ function CategoriesTab({ shopId }) {
     if (!name.trim()) return;
     try {
       if (editing) { await updateCategory(editing.id, { name: name.trim() }); toast.success('Category renamed'); }
-      else { await createCategory({ shop_id: shopId, name: name.trim(), slug: name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-') }); toast.success('Category created'); }
+      else { await createCategory({ shop_id: shopId, name: name.trim() }); toast.success('Category created'); }
       setName(''); setEditing(null); load();
-    } catch (err) { toast.error(err?.response?.data?.detail || 'Failed to save category'); }
+    } catch (err) {
+      const detail = err?.response?.data?.detail || err?.message || 'Failed to save category';
+      toast.error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    }
   };
 
   const remove = async (c) => {

@@ -55,12 +55,12 @@ Access: http://localhost:3002
 
 | Role | Username | Password | URL |
 |------|----------|----------|-----|
-| Platform Admin | `admin` | `ChangeMe123!` | http://localhost:3001 |
+| Platform Admin | `rokika` | `153579` | http://localhost:3001 |
 | Shop Owner (demo) | `demo` | `demo123` | http://localhost:3002 |
 | Reseller | `reseller` | `reseller123` | http://localhost:3005 |
 
 ---
-
+![](image.png)
 ## Important Notes
 
 1. **First run** will take a few minutes to install dependencies

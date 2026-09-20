@@ -1,15 +1,19 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --primary: #6366f1;
-  --secondary: #ec4899;
+  --primary: #ef3d78;
+  --secondary: #2563eb;
+  --brand-pink: #ef3d78;
+  --brand-blue: #2563eb;
 }
 
 body {
   margin: 0;
-  font-family: 'Inter', 'Kantumruy Pro', 'Noto Sans Khmer', system-ui, -apple-system, sans-serif;
+  font-family: 'Plus Jakarta Sans', 'Kantumruy Pro', 'Noto Sans Khmer', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   background: #f9fafb;
   color: #111827;
@@ -21,6 +25,13 @@ body {
 .bg-secondary { background-color: var(--secondary); }
 .text-secondary { color: var(--secondary); }
 
+.shop-brand-name,
+.shop-brand-heading {
+  font-family: 'Nunito', 'Kantumruy Pro', sans-serif;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
 .btn-primary {
   background-color: var(--primary);
   color: #fff;
@@ -29,6 +40,33 @@ body {
 .btn-primary:hover {
   filter: brightness(1.1);
   transform: translateY(-1px);
+}
+
+.promo-marquee { animation: promo-scroll 18s linear infinite; }
+@keyframes promo-scroll { from { transform: translateX(-50%); } to { transform: translateX(0); } }
+.trust-marquee { animation: trust-scroll 34s linear infinite; }
+@keyframes trust-scroll { from { transform: translateX(-25%); } to { transform: translateX(0); } }
+
+.brand-ticker {
+  min-height: 34px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  font-family: 'Nunito', 'Kantumruy Pro', sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+}
+.brand-ticker-track {
+  display: flex;
+  width: max-content;
+  gap: 7rem;
+  white-space: nowrap;
+  padding-left: 100%;
+  animation: brand-ticker-scroll 30s linear infinite;
+}
+@keyframes brand-ticker-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
 }
 
 /* Hide horizontal scrollbar on product rows while keeping scrollability */
@@ -98,6 +136,9 @@ body {
   position: relative;
   text-align: center;
   border: 1px solid #e5e7eb;
+}
+.qr-card-new .qr-top {
+  background: linear-gradient(135deg, var(--primary), #d62962);
 }
 .qr-top {
   background: var(--primary);

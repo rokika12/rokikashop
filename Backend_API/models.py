@@ -69,6 +69,7 @@ class Shop(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     shop_name = Column(String, default="")
+    store_type = Column(String, default="clothing")  # clothing | digital
     logo = Column(String, default="")
     banner = Column(String, default="")
     bio = Column(Text, default="")
@@ -78,6 +79,7 @@ class Shop(Base):
     theme = Column(Text, default="{}")               # JSON dict {primary, secondary, font_family}
     aba_settings = Column(Text, default="{}")        # JSON dict {profile_id, secret_key, test_mode}
     telegram_settings = Column(Text, default="{}")   # JSON dict {bot_token, chat_id, enabled}
+    shipping_settings = Column(Text, default="{}")   # JSON dict for physical-store delivery
     currency = Column(String, default="USD")
     status = Column(String, default="active")        # active | suspended | pending
     expires_at = Column(DateTime, nullable=True)     # subscription expiry (admin-set / plan)
@@ -122,6 +124,7 @@ class Shop(Base):
             "id": self.id,
             "username": self.username,
             "shop_name": self.shop_name,
+            "store_type": self.store_type or "clothing",
             "logo": self.logo,
             "banner": self.banner,
             "bio": self.bio,
@@ -129,6 +132,7 @@ class Shop(Base):
             "slideshow": self.slideshow_list(),
             "social_media": self.social_media_dict(),
             "theme": self.theme_dict(),
+            "shipping_settings": JSONText.loads(self.shipping_settings, {}),
             "currency": self.currency,
             "status": self.status,
             "max_products": self.max_products,
@@ -196,7 +200,11 @@ class Product(Base):
     shop = relationship("Shop", back_populates="products")
     category = relationship("Category", back_populates="products")
 
-    def to_dict(self):
+    def to_dict(self, include_private=False):
+        metadata = JSONText.loads(self.metadata_json, {})
+        if not include_private:
+            metadata.pop("digital_delivery", None)
+            metadata.pop("credential_pool", None)
         return {
             "id": self.id,
             "shop_id": self.shop_id,
@@ -209,7 +217,7 @@ class Product(Base):
             "images": JSONText.loads(self.images, []),
             "custom_attributes": JSONText.loads(self.custom_attributes, []),
             "variations": JSONText.loads(self.variations, []),
-            "metadata": JSONText.loads(self.metadata_json, {}),
+            "metadata": metadata,
             "featured": bool(self.featured),
             "status": self.status,
             "created_at": _iso(self.created_at),
@@ -302,15 +310,20 @@ class OrderItem(Base):
     order = relationship("Order", back_populates="items")
 
     def to_dict(self):
-        return {
+        variations = JSONText.loads(self.variations, {})
+        delivery = variations.pop("_digital_delivery", None) if self.order and self.order.payment_status == "paid" else None
+        result = {
             "id": self.id,
             "order_id": self.order_id,
             "product_id": self.product_id,
             "product_name": self.product_name,
             "price": self.price,
             "quantity": self.quantity,
-            "variations": JSONText.loads(self.variations, {}),
+            "variations": variations,
         }
+        if delivery:
+            result["digital_delivery"] = delivery
+        return result
 
 
 class Customer(Base):
@@ -334,6 +347,7 @@ class Customer(Base):
     city = Column(String, default="")
     country = Column(String, default="")
     notes = Column(Text, default="")
+    wallet_balance = Column(Float, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     shop = relationship("Shop", back_populates="customers")
@@ -357,6 +371,29 @@ class Customer(Base):
             "city": self.city,
             "country": self.country,
             "notes": self.notes,
+            "wallet_balance": round(float(self.wallet_balance or 0), 2),
+            "created_at": _iso(self.created_at),
+        }
+
+
+class WalletTransaction(Base):
+    __tablename__ = "wallet_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    shop_id = Column(Integer, ForeignKey("shops.id"), nullable=False, index=True)
+    amount = Column(Float, default=0)
+    transaction_type = Column(String, default="topup")
+    status = Column(String, default="completed")
+    reference = Column(String, default="")
+    note = Column(String, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id, "customer_id": self.customer_id, "shop_id": self.shop_id,
+            "amount": self.amount, "transaction_type": self.transaction_type,
+            "status": self.status, "reference": self.reference, "note": self.note,
             "created_at": _iso(self.created_at),
         }
 

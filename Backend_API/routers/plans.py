@@ -71,6 +71,8 @@ def _find_reseller(db, code):
 @router.post("/register")
 def register_shop_plan(data: schemas.ShopRegister, db: Session = Depends(get_db)):
     """Public: create your own shop + owner account, choose a plan, pay via ABA."""
+    if os.getenv("ALLOW_PUBLIC_SHOP_REGISTRATION", "false").lower() != "true":
+        raise HTTPException(status_code=403, detail="Please contact the platform admin to open a shop")
     username = (data.username or "").strip().lower()
     if not username or not data.password:
         raise HTTPException(status_code=400, detail="Username and password are required")
@@ -81,6 +83,9 @@ def register_shop_plan(data: schemas.ShopRegister, db: Session = Depends(get_db)
     plan = PLANS.get((data.plan or "starter").strip().lower())
     if not plan:
         raise HTTPException(status_code=400, detail="Invalid plan")
+    store_type = (data.store_type or "clothing").strip().lower()
+    if store_type not in ("clothing", "digital"):
+        raise HTTPException(status_code=400, detail="Invalid store type")
 
     reseller = _find_reseller(db, data.referral_code)
     if (data.referral_code or "").strip() and not reseller:
@@ -108,6 +113,7 @@ def register_shop_plan(data: schemas.ShopRegister, db: Session = Depends(get_db)
     shop = models.Shop(
         username=username,
         shop_name=data.shop_name or username,
+        store_type=store_type,
         currency=data.currency or "USD",
         status="active" if free_plan else "pending",
         max_products=plan["max_products"],

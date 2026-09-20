@@ -14,6 +14,7 @@ export default function Slideshow({ slides }) {
   const images = useMemo(() => slides || [], [slides]);
   const count = images.length;
   const [index, setIndex] = useState(0);
+  const touchStart = useRef(null);
   const timerRef = useRef(null);
 
   const goTo = useCallback((i) => {
@@ -23,6 +24,19 @@ export default function Slideshow({ slides }) {
 
   const next = useCallback(() => goTo(index + 1), [goTo, index]);
   const prev = useCallback(() => goTo(index - 1), [goTo, index]);
+
+  const handleTouchStart = (event) => {
+    touchStart.current = event.touches[0]?.clientX ?? null;
+  };
+
+  const handleTouchEnd = (event) => {
+    if (touchStart.current === null || count < 2) return;
+    const distance = event.changedTouches[0].clientX - touchStart.current;
+    touchStart.current = null;
+    if (Math.abs(distance) < 40) return;
+    if (distance < 0) next();
+    else prev();
+  };
 
   useEffect(() => {
     setIndex(0);
@@ -47,7 +61,11 @@ export default function Slideshow({ slides }) {
   }
 
   return (
-    <div className="relative w-full h-56 sm:h-64 md:h-80 lg:h-96 overflow-hidden">
+    <div
+      className="relative w-full aspect-[3/1] min-h-[180px] max-h-[520px] overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800 touch-pan-y"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       {images.map((img, i) => (
         <div
           key={i}

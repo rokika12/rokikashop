@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { FiCheckCircle, FiClock, FiList, FiUser } from 'react-icons/fi';
+import { FiCheckCircle, FiClock, FiCopy, FiList, FiUser } from 'react-icons/fi';
 import { useShop } from '../contexts/ShopContext';
 import { useCustomer } from '../contexts/CustomerContext';
 import { useLanguage } from '../i18n';
-import { getMyOrders, fullUrl } from '../api';
+import { getMyOrders, trackOrder, fullUrl } from '../api';
 import CustomerAuth from '../components/CustomerAuth';
 
 const STATUS_COLORS = {
@@ -39,21 +39,35 @@ export default function MyOrders() {
   const [history, setHistory] = useState(null);
   const [openOrder, setOpenOrder] = useState(null);
 
+  const loadGuestOrders = useCallback(async () => {
+    const numbers = JSON.parse(localStorage.getItem(`ms_guest_orders_${shop?.id}`) || '[]');
+    const orders = (await Promise.all(numbers.map((number) => trackOrder(number).catch(() => null)))).filter(Boolean);
+    setHistory({ count: orders.length, orders });
+  }, [shop?.id]);
+
   useEffect(() => {
     let mounted = true;
     if (isLoggedIn && token) {
       setLoading(true);
       getMyOrders(token)
         .then((res) => { if (mounted) setHistory(res); })
-        .catch((err) => { if (mounted) toast.error(err?.response?.data?.detail || 'Failed to load orders'); })
+        .catch(async (err) => {
+          if (err?.response?.status === 401) {
+            logout();
+            await loadGuestOrders();
+          } else if (mounted) toast.error(err?.response?.data?.detail || 'Failed to load orders');
+        })
         .finally(() => { if (mounted) setLoading(false); });
     } else {
-      setHistory(null);
+      loadGuestOrders().finally(() => { if (mounted) setLoading(false); });
     }
     return () => { mounted = false; };
-  }, [isLoggedIn, token]);
+  }, [isLoggedIn, loadGuestOrders, logout, token]);
 
   if (!shop) return null;
+
+  const showGuestHistory = !isLoggedIn && history && history.count > 0;
+  const showSignInCard = !isLoggedIn && (!history || history.count === 0);
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
@@ -68,7 +82,7 @@ export default function MyOrders() {
         )}
       </div>
 
-      {!isLoggedIn ? (
+      {showSignInCard ? (
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow p-8 max-w-md mx-auto">
           <div className="w-14 h-14 mx-auto rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center mb-4">
             <FiUser className="w-7 h-7" />
@@ -90,6 +104,11 @@ export default function MyOrders() {
             </div>
           ) : (
             <div className="space-y-4">
+              {showGuestHistory && (
+                <p className="text-sm text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2 border border-amber-200 dark:border-amber-800">
+                  Guest order history is shown below.
+                </p>
+              )}
               <p className="text-sm text-gray-500 dark:text-gray-400">{history.count} {t('ordersFound')}</p>
               {history.orders.map((o) => {
                 const open = openOrder === o.id;
@@ -97,6 +116,7 @@ export default function MyOrders() {
                 const variations = (item) => (item.variations && Object.keys(item.variations).length
                   ? Object.entries(item.variations).map(([k, v]) => `${k}: ${v}`).join(' · ')
                   : '');
+                const digitalItems = (o.items || []).filter((item) => item.digital_delivery);
                 return (
                 <div key={o.id} className="bg-white dark:bg-gray-800 rounded-2xl shadow overflow-hidden">
                   <div className="p-5 border-b flex flex-wrap items-center justify-between gap-2">
@@ -172,6 +192,29 @@ export default function MyOrders() {
                         </div>
                       ))}
                     </div>
+
+                    {digitalItems.length > 0 && (
+                      <div className="rounded-xl border-2 border-blue-600 overflow-hidden bg-white dark:bg-gray-800">
+                        <div className="px-4 py-3 bg-blue-50 dark:bg-blue-900/20 font-bold text-blue-900 dark:text-blue-200">Digital product access</div>
+                        {digitalItems.map((item, idx) => (
+                          <div key={idx} className="p-4 border-t space-y-2">
+                            <p className="font-semibold">{item.product_name}</p>
+                            {Object.entries(item.digital_delivery || {}).filter(([, value]) => value).map(([key, value]) => (
+                              <div key={key} className="flex items-center gap-2 text-sm">
+                                <span className="w-28 text-gray-500 capitalize">{key.replace('_', ' ')}:</span>
+                                <code className="flex-1 bg-gray-50 dark:bg-gray-700 rounded px-2 py-1 break-all">{value}</code>
+                                <button
+                                  onClick={() => { navigator.clipboard.writeText(String(value)); toast.success('Copied'); }}
+                                  className="p-2 rounded bg-blue-600 text-white" title="Copy"
+                                >
+                                  <FiCopy />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                     <div className="text-sm space-y-1 bg-white dark:bg-gray-800 border rounded-lg p-3">
                       <div className="flex justify-between"><span>{t('subtotal')}</span><span>{Number(o.items_total).toFixed(2)} {o.currency}</span></div>

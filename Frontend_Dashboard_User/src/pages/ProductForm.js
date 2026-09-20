@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { FiTrash2, FiUpload } from 'react-icons/fi';
-import { createProduct, getProduct, listCategories, updateProduct, uploadImages, fullUrl } from '../api';
+import { createProduct, getProduct, getShopDetail, listCategories, updateProduct, uploadImages, fullUrl } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import AttributeBuilder from '../components/AttributeBuilder';
 import VariationBuilder from '../components/VariationBuilder';
@@ -11,7 +11,10 @@ import { btnGhost, btnPrimary, inputCls } from '../components/ui';
 const emptyProduct = {
   name: '', description: '', price: 0, sale_price: '', quantity: 0,
   category_id: '', images: [], custom_attributes: [], variations: [], featured: false, status: 'active',
+  metadata: { product_type: 'physical', is_khsmm_service: false, service_platform: '', service_type: '', api_package_id: '', service_url: 'https://khmer-smm.com/', digital_delivery: { credentials: [] } },
 };
+
+const emptyCredential = { email: '', password: '', license_key: '' };
 
 export default function ProductForm() {
   const { id } = useParams();
@@ -20,10 +23,12 @@ export default function ProductForm() {
   const [form, setForm] = useState(emptyProduct);
   const [categories, setCategories] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [storeType, setStoreType] = useState('clothing');
   const isEdit = !!id;
 
   useEffect(() => {
     listCategories(user.shop_id).then(setCategories);
+    getShopDetail(user.shop_id).then((shop) => setStoreType(shop.store_type || 'clothing'));
     if (isEdit) {
       getProduct(id).then((p) => {
         setForm({
@@ -32,6 +37,15 @@ export default function ProductForm() {
           category_id: p.category_id ?? '', images: p.images || [],
           custom_attributes: p.custom_attributes || [], variations: p.variations || [],
           featured: p.featured, status: p.status,
+          metadata: {
+            product_type: p.metadata?.product_type || 'physical',
+            is_khsmm_service: !!p.metadata?.is_khsmm_service,
+            service_platform: p.metadata?.service_platform || '',
+            service_type: p.metadata?.service_type || '',
+            api_package_id: p.metadata?.api_package_id || '',
+            service_url: p.metadata?.service_url || 'https://khmer-smm.com/',
+            digital_delivery: p.metadata?.digital_delivery || { credentials: [] },
+          },
         });
       });
     }
@@ -56,21 +70,76 @@ export default function ProductForm() {
     setForm({ ...form, images: form.images.filter((_, i) => i !== idx) });
   };
 
+  const credentials = form.metadata?.digital_delivery?.credentials || [];
+  const primaryButton = storeType === 'digital'
+    ? 'bg-pink-500 hover:bg-pink-600 text-white px-4 py-2 rounded-lg font-semibold transition disabled:opacity-50'
+    : btnPrimary;
+  const setCredential = (index, field, value) => setForm({
+    ...form,
+    metadata: {
+      ...form.metadata,
+      digital_delivery: {
+        ...(form.metadata?.digital_delivery || {}),
+        credentials: credentials.map((entry, i) => i === index ? { ...entry, [field]: value } : entry),
+      },
+    },
+  });
+
+  const addCredential = () => setForm({
+    ...form,
+    metadata: {
+      ...form.metadata,
+      digital_delivery: {
+        ...(form.metadata?.digital_delivery || {}),
+        credentials: [...credentials, { ...emptyCredential }],
+      },
+    },
+  });
+
+  const removeCredential = (index) => setForm({
+    ...form,
+    metadata: {
+      ...form.metadata,
+      digital_delivery: {
+        ...(form.metadata?.digital_delivery || {}),
+        credentials: credentials.filter((_, i) => i !== index),
+      },
+    },
+  });
+
   const submit = async (e) => {
     e.preventDefault();
     if (!form.name.trim()) { toast.error('Product name is required'); return; }
     setSaving(true);
+    const digitalCredentials = credentials.filter((entry) => entry.email || entry.password || entry.license_key);
+    const metadata = {
+      ...(form.metadata || {}),
+      product_type: storeType === 'digital' ? 'digital' : 'physical',
+      is_khsmm_service: storeType === 'digital' && !!form.metadata?.is_khsmm_service,
+      service_platform: form.metadata?.service_platform || '',
+      service_type: form.metadata?.service_type || '',
+      api_package_id: form.metadata?.api_package_id || '',
+      service_url: form.metadata?.service_url || 'https://khmer-smm.com/',
+    };
+    if (storeType === 'digital') {
+      metadata.digital_delivery = { ...(form.metadata?.digital_delivery || {}), credentials: digitalCredentials };
+    } else {
+      delete metadata.digital_delivery;
+      metadata.is_khsmm_service = false;
+    }
+
     const payload = {
       shop_id: user.shop_id,
       name: form.name, description: form.description,
       price: Number(form.price) || 0,
       sale_price: form.sale_price === '' || form.sale_price === null ? null : Number(form.sale_price),
-      quantity: Number(form.quantity) || 0,
+      quantity: storeType === 'digital' ? digitalCredentials.length : Number(form.quantity) || 0,
       category_id: form.category_id === '' ? null : Number(form.category_id),
       images: form.images,
       custom_attributes: form.custom_attributes.filter((a) => a.name.trim()),
       variations: form.variations.map((v) => ({ ...v, price: Number(v.price) || 0, quantity: Number(v.quantity) || 0 })),
       featured: form.featured, status: form.status,
+      metadata,
     };
     try {
       if (isEdit) { await updateProduct(id, payload); toast.success('Product updated!'); }
@@ -108,7 +177,11 @@ export default function ProductForm() {
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 block">ចំនួន</label>
-              <input type="number" value={form.quantity} onChange={set('quantity')} className={inputCls} />
+              {storeType === 'digital' ? (
+                <div className={`${inputCls} bg-slate-50 text-slate-500`}>{credentials.length} credentials available</div>
+              ) : (
+                <input type="number" value={form.quantity} onChange={set('quantity')} className={inputCls} />
+              )}
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 block">ប្រភេទ</label>
@@ -145,6 +218,93 @@ export default function ProductForm() {
           )}
         </div>
 
+        {storeType === 'digital' && (
+        <div className="bg-white rounded-xl shadow-sm p-6 space-y-4 border border-pink-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-bold text-pink-700">Digital credentials / codes</h2>
+              <p className="text-xs text-gray-500 mt-1">Each row is one digital item. Paid orders receive one available row.</p>
+            </div>
+            <button type="button" onClick={addCredential} className="text-sm font-bold text-pink-600 hover:underline">+ Add credential</button>
+          </div>
+          {credentials.length === 0 && <p className="text-sm text-gray-400 bg-pink-50 rounded-lg p-3">Add email, password, or code rows for this product.</p>}
+          {credentials.map((entry, index) => (
+            <div key={index} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end rounded-lg bg-pink-50 p-3">
+              <input value={entry.email || ''} onChange={(e) => setCredential(index, 'email', e.target.value)} className={inputCls} placeholder="Email / username" />
+              <input value={entry.password || ''} onChange={(e) => setCredential(index, 'password', e.target.value)} className={inputCls} placeholder="Password" />
+              <input value={entry.license_key || ''} onChange={(e) => setCredential(index, 'license_key', e.target.value)} className={inputCls} placeholder="Code / license key" />
+              <button type="button" onClick={() => removeCredential(index)} className="p-2 text-red-500 hover:bg-white rounded-lg" title="Remove credential"><FiTrash2 /></button>
+            </div>
+          ))}
+        </div>
+        )}
+
+        {storeType === 'digital' && <div className="bg-white rounded-xl shadow-sm p-6 space-y-4">
+          <h2 className="font-bold">KHSMM Service Configuration</h2>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={!!form.metadata?.is_khsmm_service}
+              onChange={(e) => setForm({ ...form, metadata: { ...form.metadata, is_khsmm_service: e.target.checked } })}
+              className="w-4 h-4"
+            />
+            Mark as paid KHSMM service
+          </label>
+
+          {form.metadata?.is_khsmm_service && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block">Platform</label>
+                <select
+                  value={form.metadata?.service_platform || ''}
+                  onChange={(e) => setForm({ ...form, metadata: { ...form.metadata, service_platform: e.target.value } })}
+                  className={inputCls}
+                >
+                  <option value="">Select platform</option>
+                  <option value="facebook">Facebook</option>
+                  <option value="instagram">Instagram</option>
+                  <option value="tiktok">TikTok</option>
+                  <option value="telegram">Telegram</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block">Service Type</label>
+                <input
+                  value={form.metadata?.service_type || ''}
+                  onChange={(e) => setForm({ ...form, metadata: { ...form.metadata, service_type: e.target.value } })}
+                  className={inputCls}
+                  placeholder="followers, likes, views, members"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block">API Package ID</label>
+                <input
+                  value={form.metadata?.api_package_id || ''}
+                  onChange={(e) => setForm({ ...form, metadata: { ...form.metadata, api_package_id: e.target.value } })}
+                  className={inputCls}
+                  placeholder="e.g. 12345"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block">Service URL</label>
+                <input
+                  value={form.metadata?.service_url || 'https://khmer-smm.com/'}
+                  onChange={(e) => setForm({ ...form, metadata: { ...form.metadata, service_url: e.target.value } })}
+                  className={inputCls}
+                  placeholder="https://khmer-smm.com/"
+                />
+              </div>
+            </div>
+          )}
+        </div>}
+
+        {storeType === 'clothing' && (
+          <div className="bg-white rounded-xl shadow-sm p-6 border border-blue-100">
+            <h2 className="font-bold text-blue-700">Clothing store product</h2>
+            <p className="text-sm text-gray-500 mt-1">This product uses physical stock and customer shipping details. Digital credentials are disabled for this shop.</p>
+          </div>
+        )}
+
         <div className="bg-white rounded-xl shadow-sm p-6">
           <AttributeBuilder attributes={form.custom_attributes} onChange={(v) => setForm({ ...form, custom_attributes: v })} />
         </div>
@@ -170,7 +330,7 @@ export default function ProductForm() {
         </div>
 
         <div className="flex gap-3">
-          <button type="submit" disabled={saving} className={btnPrimary}>
+          <button type="submit" disabled={saving} className={primaryButton}>
             {saving ? 'កំពុងរក្សាទុក...' : isEdit ? 'រក្សាទុកការផ្លាស់ប្តូរ' : 'បង្កើតផលិតផល'}
           </button>
           <button type="button" onClick={() => navigate('/products')} className={btnGhost}>បោះបង់</button>

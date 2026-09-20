@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
-import { FiGrid, FiLogOut, FiMenu, FiSearch, FiShare2, FiShoppingCart, FiUser, FiX } from 'react-icons/fi';
+import { FiCreditCard, FiGrid, FiLogOut, FiMenu, FiSearch, FiUser, FiX } from 'react-icons/fi';
+import { FcGoogle } from 'react-icons/fc';
 import { useShop } from '../contexts/ShopContext';
-import { useCart } from '../contexts/CartContext';
 import { useCustomer } from '../contexts/CustomerContext';
 import { useOwner } from '../contexts/OwnerContext';
 import { useLanguage } from '../i18n';
@@ -10,21 +10,26 @@ import LanguageSwitcher from './LanguageSwitcher';
 import ThemeToggle from './ThemeToggle';
 import CustomerAuth from './CustomerAuth';
 import ShopLogo from './ShopLogo';
-import { DASHBOARD_URL, fullUrl, ownerCheck } from '../api';
+import { DASHBOARD_URL, getMyWallet, ownerCheck } from '../api';
 
 export default function ShopHeader() {
   const { shop } = useShop();
-  const { count, setOpen } = useCart();
   const { customer, isLoggedIn, logout } = useCustomer();
   const { owner, token, isLoggedIn: isOwnerLoggedIn, logout: ownerLogout } = useOwner();
   const { t } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
-  const [qrOpen, setQrOpen] = useState(false);
+  const [walletBalance, setWalletBalance] = useState(customer?.wallet_balance || 0);
   const [search, setSearch] = useState('');
   const [isMyShop, setIsMyShop] = useState(false);
   const base = `/${shop.username}`;
-  const qrUrl = fullUrl(`/api/shops/${shop.username}/qr?url=${encodeURIComponent(`${window.location.origin}/${shop.username}`)}`);
+
+  useEffect(() => {
+    if (shop.store_type !== 'digital' || !isLoggedIn || customer?.shop_id !== shop.id) return;
+    getMyWallet(localStorage.getItem('ms_customer_token'))
+      .then((wallet) => setWalletBalance(wallet.balance || 0))
+      .catch(() => setWalletBalance(customer?.wallet_balance || 0));
+  }, [shop.id, shop.store_type, isLoggedIn, customer?.shop_id, customer?.wallet_balance]);
 
   // Server-verified ownership: the Dashboard button shows ONLY when the signed-in
   // account is confirmed (by /api/shops/:id/owner) as the owner/staff of this shop.
@@ -56,7 +61,7 @@ export default function ShopHeader() {
           {/* Logo */}
           <Link to={base} className="flex items-center gap-2 min-w-0">
             <ShopLogo shop={shop} className="w-10 h-10 rounded-full" textClassName="text-lg" />
-            <span className="font-bold text-gray-900 dark:text-white truncate hidden sm:block">{shop.shop_name || shop.username}</span>
+            <span className="shop-brand-name text-lg text-gray-900 dark:text-white truncate hidden sm:block">{shop.shop_name || shop.username}</span>
           </Link>
 
           {/* Desktop nav */}
@@ -85,8 +90,13 @@ export default function ShopHeader() {
                 onClick={() => setLoginOpen(!loginOpen)}
                 className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-sky-500 text-white text-xs font-semibold hover:bg-sky-600 transition"
               >
-                <FiUser className="w-3.5 h-3.5" /> {t('signIn')}
+                <FcGoogle className="w-4 h-4" /> {t('signIn')}
               </button>
+            )}
+            {shop.store_type === 'digital' && isLoggedIn && customer?.shop_id === shop.id && (
+              <Link to={`${base}/profile`} className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-pink-50 border border-pink-200 px-3 py-1.5 text-xs font-bold text-pink-700" title="Open wallet">
+                <FiCreditCard className="w-3.5 h-3.5" /> ${Number(walletBalance).toFixed(2)}
+              </Link>
             )}
             {isMyShop && (
               <>
@@ -118,26 +128,6 @@ export default function ShopHeader() {
               </Link>
             )}
             <button
-              onClick={() => setQrOpen(true)}
-              className="p-2 rounded-lg hover:bg-gray-100"
-              aria-label={t('qrCode')}
-              title={t('qrCode')}
-            >
-              <FiShare2 className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => setOpen(true)}
-              className="relative p-2 rounded-lg hover:bg-gray-100"
-              aria-label={t('cart')}
-            >
-              <FiShoppingCart className="w-5 h-5" />
-              {count > 0 && (
-                <span className="absolute -top-1 -right-1 bg-secondary text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
-                  {count}
-                </span>
-              )}
-            </button>
-            <button
               onClick={() => setMenuOpen(!menuOpen)}
               className="md:hidden p-2 rounded-lg hover:bg-gray-100"
               aria-label="Toggle menu"
@@ -151,7 +141,7 @@ export default function ShopHeader() {
                 {isLoggedIn ? (
                   <div className="text-center">
                     <div className="w-12 h-12 mx-auto rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-2">
-                      <FiUser className="w-6 h-6" />
+                      <FcGoogle className="w-7 h-7" />
                     </div>
                     <p className="font-bold text-sm">{customer?.name}</p>
                     <p className="text-xs text-gray-500">{customer?.phone || customer?.email}</p>
@@ -177,28 +167,6 @@ export default function ShopHeader() {
           </div>
         </div>
 
-        {/* QR code modal */}
-        {qrOpen && (
-          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setQrOpen(false)}>
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-center gap-2 mb-4">
-                <ShopLogo shop={shop} className="w-9 h-9 rounded-full" textClassName="text-sm" />
-                <p className="font-bold text-lg dark:text-white">{shop.shop_name || shop.username}</p>
-              </div>
-              <img src={qrUrl} alt={t('qrCode')} className="w-56 h-56 mx-auto rounded-xl border border-gray-200" />
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-3">{t('scanToVisit')}</p>
-              <div className="flex gap-2 mt-4">
-                <a href={qrUrl} download={`${shop.username}-qr.png`} className="flex-1 btn-primary py-2.5 rounded-xl font-semibold">
-                  ↓ {t('downloadQr')}
-                </a>
-                <button onClick={() => setQrOpen(false)} className="px-4 py-2.5 rounded-xl border text-gray-600 dark:text-gray-300 dark:border-gray-600 font-semibold">
-                  {t('cancel')}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Mobile menu */}
         {menuOpen && (
           <div className="md:hidden pb-4 space-y-2">
@@ -216,6 +184,11 @@ export default function ShopHeader() {
             <NavLink to={`${base}/my-orders`} className={mobileLinkCls}>{t('myOrders')}</NavLink>
             <NavLink to={`${base}/profile`} className={mobileLinkCls}>{t('myProfile')}</NavLink>
             <NavLink to={`${base}/about`} className={mobileLinkCls}>{t('about')}</NavLink>
+            {shop.store_type === 'digital' && isLoggedIn && customer?.shop_id === shop.id && (
+              <Link to={`${base}/profile`} className="flex items-center gap-2 rounded-lg bg-pink-50 px-3 py-2.5 text-sm font-bold text-pink-700">
+                <FiCreditCard className="w-4 h-4" /> Wallet ${Number(walletBalance).toFixed(2)} · Add balance
+              </Link>
+            )}
             {isMyShop && (
               <>
                 <a

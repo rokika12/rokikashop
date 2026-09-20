@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   FiArchive, FiArrowRight, FiCheck, FiCreditCard, FiFileText, FiLayers,
   FiMail, FiMessageCircle, FiSend, FiShoppingBag, FiSliders, FiSmartphone,
-  FiTruck, FiUsers,
+  FiTruck,
 } from 'react-icons/fi';
 import { useLanguage } from '../i18n';
 import LanguageSwitcher from '../components/LanguageSwitcher';
@@ -45,23 +45,6 @@ function BrandMark({ size = 'w-10 h-10', light = false }) {
       </span>
     </div>
   );
-}
-
-function OfferCountdown() {
-  const [end] = useState(new Date(2026, 8, 7, 23, 59, 59).getTime());
-  const [secs, setSecs] = useState(0);
-  useEffect(() => {
-    const tick = () => setSecs(Math.max(0, Math.floor((end - Date.now()) / 1000)));
-    tick();
-    const iv = setInterval(tick, 1000);
-    return () => clearInterval(iv);
-  }, [end]);
-  const pad = (x) => String(x).padStart(2, '0');
-  const d = Math.floor(secs / 86400);
-  const h = Math.floor((secs % 86400) / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = secs % 60;
-  return <span className="font-mono font-bold tracking-wider">{d}d {pad(h)}:{pad(m)}:{pad(s)}</span>;
 }
 
 export default function HomePage() {

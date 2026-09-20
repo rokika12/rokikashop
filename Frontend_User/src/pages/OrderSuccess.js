@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { FiCheckCircle, FiClock, FiDownload, FiHelpCircle } from 'react-icons/fi';
+import { FiCheckCircle, FiClock, FiCopy, FiDownload, FiHelpCircle } from 'react-icons/fi';
+import toast from 'react-hot-toast';
 import { useShop } from '../contexts/ShopContext';
 import { useLanguage } from '../i18n';
 import { trackOrder, fullUrl } from '../api';
@@ -89,6 +90,23 @@ export default function OrderSuccess() {
               </div>
             ))}
           </div>
+          {isPaid && order.items.some((item) => item.digital_delivery) && (
+            <div className="mt-6 rounded-xl border-2 border-blue-600 overflow-hidden">
+              <div className="px-4 py-3 bg-blue-50 font-bold text-blue-900">Digital product access</div>
+              {order.items.filter((item) => item.digital_delivery).map((item, idx) => (
+                <div key={idx} className="p-4 border-t space-y-2">
+                  <p className="font-semibold">{item.product_name}</p>
+                  {Object.entries(item.digital_delivery).filter(([, value]) => value).map(([key, value]) => (
+                    <div key={key} className="flex items-center gap-2 text-sm">
+                      <span className="w-28 text-gray-500 capitalize">{key.replace('_', ' ')}:</span>
+                      <code className="flex-1 bg-gray-50 rounded px-2 py-1 break-all">{value}</code>
+                      <button onClick={() => { navigator.clipboard.writeText(String(value)); toast.success('Copied'); }} className="p-2 rounded bg-blue-600 text-white" title="Copy"><FiCopy /></button>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
           <div className="border-t mt-4 pt-4 space-y-1 text-sm">
             <div className="flex justify-between text-gray-500"><span>{t('subtotal')}</span><span>{order.items_total.toFixed(2)}</span></div>
             {order.shipping_fee > 0 && <div className="flex justify-between text-gray-500"><span>{t('shipping')}</span><span>{order.shipping_fee.toFixed(2)}</span></div>}

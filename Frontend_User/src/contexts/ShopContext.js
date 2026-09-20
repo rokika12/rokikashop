@@ -5,6 +5,12 @@ import { getShop, fullUrl } from '../api';
 
 const ShopContext = createContext(null);
 
+const DEFAULT_THEME = {
+  primary: '#ef3d78',
+  secondary: '#2563eb',
+  font_family: 'Nunito',
+};
+
 // The browser-tab icon (favicon) follows the active shop's logo.
 // The default favicon link in index.html has data-default="true".
 function setShopFavicon(logoUrl) {
@@ -52,10 +58,12 @@ export const ShopProvider = ({ children }) => {
         }
         meta.setAttribute('content', (data.description || data.bio || `Shop ${shopTitle} on ROKIKA SHOP`).slice(0, 200));
         // Apply theme colors
-        const theme = data.theme || {};
-        if (theme.primary) document.documentElement.style.setProperty('--primary', theme.primary);
-        if (theme.secondary) document.documentElement.style.setProperty('--secondary', theme.secondary);
-        if (theme.font_family) document.documentElement.style.fontFamily = `'${theme.font_family}', sans-serif`;
+        const theme = { ...DEFAULT_THEME, ...(data.theme || {}) };
+        document.documentElement.style.setProperty('--primary', theme.primary);
+        document.documentElement.style.setProperty('--secondary', theme.secondary);
+        document.documentElement.style.setProperty('--brand-pink', theme.primary);
+        document.documentElement.style.setProperty('--brand-blue', theme.secondary);
+        document.documentElement.style.fontFamily = `'${theme.font_family}', 'Kantumruy Pro', sans-serif`;
       })
       .catch((err) => {
         setError(err?.response?.data?.detail || 'Shop not found');

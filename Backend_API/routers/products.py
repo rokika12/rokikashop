@@ -55,7 +55,7 @@ def list_products(shop_id: int = Query(...), db: Session = Depends(get_db),
     products = (db.query(models.Product)
                 .filter(models.Product.shop_id == shop_id)
                 .order_by(models.Product.id.desc()).all())
-    return [p.to_dict() for p in products]
+    return [p.to_dict(include_private=True) for p in products]
 
 
 @router.get("/{product_id}")
@@ -65,7 +65,7 @@ def get_product(product_id: int, db: Session = Depends(get_db),
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     require_shop_access(product.shop_id, user)
-    return product.to_dict()
+    return product.to_dict(include_private=True)
 
 
 @router.post("")
@@ -100,7 +100,7 @@ def create_product(data: schemas.ProductCreate, db: Session = Depends(get_db),
     log_activity(db, "create_product", f"{user.username} created product '{data.name}'", data.shop_id, user)
     db.commit()
     db.refresh(product)
-    return product.to_dict()
+    return product.to_dict(include_private=True)
 
 
 @router.put("/{product_id}")
@@ -128,7 +128,7 @@ def update_product(product_id: int, data: schemas.ProductUpdate, db: Session = D
     log_activity(db, "update_product", f"{user.username} updated product '{product.name}'", product.shop_id, user)
     db.commit()
     db.refresh(product)
-    return product.to_dict()
+    return product.to_dict(include_private=True)
 
 
 @router.post("/{product_id}/stock")

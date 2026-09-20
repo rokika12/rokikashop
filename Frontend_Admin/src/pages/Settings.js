@@ -1,14 +1,39 @@
 import React, { useEffect, useState } from 'react';
-import { getPlatformSettings } from '../api';
-import { Loading, inputCls } from '../components/ui';
+import toast from 'react-hot-toast';
+import { getPlatformSettings, listShops, updateShop } from '../api';
+import { Loading, btnGhost, inputCls } from '../components/ui';
 
 export default function Settings() {
   const [settings, setSettings] = useState(null);
+  const [shops, setShops] = useState([]);
+  const [shopId, setShopId] = useState('');
+  const [payment, setPayment] = useState({ profile_id: '', secret_key: '', test_mode: true });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getPlatformSettings().then(setSettings).finally(() => setLoading(false));
+    Promise.all([getPlatformSettings(), listShops()]).then(([platform, shopList]) => {
+      setSettings(platform);
+      setShops(shopList);
+      if (shopList.length) {
+        const firstShop = shopList[0];
+        setShopId(String(firstShop.id));
+        setPayment({ profile_id: firstShop.aba_settings?.profile_id || '', secret_key: firstShop.aba_settings?.secret_key || '', test_mode: firstShop.aba_settings?.test_mode !== false });
+      }
+    }).finally(() => setLoading(false));
   }, []);
+
+  const selectShop = (value, shopList = shops) => {
+    const shop = shopList.find((item) => String(item.id) === value);
+    setShopId(value);
+    setPayment({ profile_id: shop?.aba_settings?.profile_id || '', secret_key: shop?.aba_settings?.secret_key || '', test_mode: shop?.aba_settings?.test_mode !== false });
+  };
+
+  const savePayment = async () => {
+    try {
+      await updateShop(shopId, { aba_settings: payment });
+      toast.success('Payment settings saved');
+    } catch (e) { toast.error(e?.response?.data?.detail || 'Failed to save payment settings'); }
+  };
 
   if (loading) return <Loading />;
 
@@ -76,26 +101,25 @@ export default function Settings() {
 
         <div className="bg-white rounded-xl shadow-sm p-6">
           <h2 className="font-bold text-lg mb-4">Payment</h2>
-          <div className="space-y-2 text-sm text-gray-600">
-            <p className="flex justify-between border-b pb-2">
-              <span>ABA Pay Integration</span>
-              <span className="text-green-600 font-semibold">✓ Active</span>
-            </p>
-            <p className="flex justify-between border-b pb-2">
-              <span>Per-shop profile ID & secret key</span>
-              <span className="text-green-600 font-semibold">✓ Supported</span>
-            </p>
-            <p className="flex justify-between">
-              <span>Sandbox mode (no credentials)</span>
-              <span className="text-amber-600 font-semibold">✓ Auto-enabled</span>
-            </p>
+          <div className="space-y-3 text-sm text-gray-600">
+            <select value={shopId} onChange={(e) => selectShop(e.target.value)} className={inputCls}>
+              {shops.length === 0 && <option value="">No shops found</option>}
+              {shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.shop_name || shop.username} (@{shop.username})</option>)}
+            </select>
+            <input value={payment.profile_id} onChange={(e) => setPayment({ ...payment, profile_id: e.target.value })} className={inputCls} placeholder="ABA Profile ID / API ID" />
+            <input type="password" value={payment.secret_key} onChange={(e) => setPayment({ ...payment, secret_key: e.target.value })} className={inputCls} placeholder="ABA Secret Key / API Key" />
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={payment.test_mode} onChange={(e) => setPayment({ ...payment, test_mode: e.target.checked })} /> Sandbox / test mode
+            </label>
+            <button onClick={savePayment} disabled={!shopId} className={`${btnGhost} disabled:opacity-50`}>Save Payment Settings</button>
           </div>
         </div>
       </div>
 
       <div className="mt-6 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-700">
-        <strong>Note:</strong> For security, secret values (ABA secret keys, Telegram tokens) are stored per-shop in the
-        Shop Dashboard and never exposed through the public admin API. Rate-limit tuning is done in the backend config
+        <strong>Note:</strong> Configure each shop&apos;s ABA Profile ID and Secret/API Key from
+        <strong> Shops → Manage → Overview</strong>. Secret values are only returned to authenticated admins and are
+        never exposed through the public storefront. Rate-limit tuning is done in the backend config
         (<code className="font-mono">Backend_API/config.py</code>).
       </div>
     </div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Chart as ChartJS, ArcElement, BarElement, CategoryScale, Filler, Legend,
   LinearScale, LineElement, PointElement, Tooltip,
@@ -77,7 +78,13 @@ export default function Dashboard() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Platform Dashboard</h1>
+      <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
+        <h1 className="text-2xl font-bold">Platform Dashboard</h1>
+        <div className="flex gap-2">
+          <Link to="/settings" className="px-3 py-2 rounded-lg bg-white border text-sm font-semibold text-gray-700 hover:bg-slate-50">Payment Settings</Link>
+          <Link to="/shops" className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">View Website</Link>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         <StatCard label="Total Shops" value={stats.shops} icon={<FiBox />} color="bg-indigo-100 text-indigo-600" />

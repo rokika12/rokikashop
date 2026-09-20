@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { FiCreditCard, FiLoader, FiLock, FiSmartphone, FiUser } from 'react-icons/fi';
+import { FiCreditCard, FiLoader, FiLock, FiSmartphone, FiUser, FiX } from 'react-icons/fi';
 import { useShop } from '../contexts/ShopContext';
 import { useCart } from '../contexts/CartContext';
 import { useCustomer } from '../contexts/CustomerContext';
 import { useLanguage } from '../i18n';
-import { createOrderAsCustomer, createPayment, verifyPayment, fullUrl } from '../api';
+import { createOrderAsCustomer, createPayment, getMyWallet, verifyPayment, fullUrl } from '../api';
 import CustomerAuth from '../components/CustomerAuth';
 import { Spinner } from '../components/Loading';
 
@@ -14,21 +14,6 @@ const initialForm = {
   customer_name: '', customer_email: '', customer_phone: '',
   customer_telegram: '', customer_address: '', customer_city: '',
   customer_country: '', customer_note: '',
-};
-
-// Cambodia timezone display (Asia/Phnom_Penh, UTC+7)
-const fmtKH = (iso) => {
-  const d = iso ? new Date(iso) : new Date();
-  if (Number.isNaN(d.getTime())) return iso;
-  try {
-    return d.toLocaleString(undefined, {
-      timeZone: 'Asia/Phnom_Penh',
-      year: 'numeric', month: 'short', day: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    });
-  } catch (e) {
-    return d.toLocaleString();
-  }
 };
 
 export default function Checkout() {
@@ -44,6 +29,8 @@ export default function Checkout() {
   const [checking, setChecking] = useState(false);
   const [remaining, setRemaining] = useState(180); // 3:00 countdown for payment check
   const [qrFailed, setQrFailed] = useState(false); // QR image failed to load → show fallback
+  const [paymentMethod, setPaymentMethod] = useState('khqr');
+  const [walletBalance, setWalletBalance] = useState(0);
 
   useEffect(() => {
     setQrFailed(false);
@@ -66,6 +53,12 @@ export default function Checkout() {
       customer_telegram: f.customer_telegram || customer.telegram || '',
     }));
   }, [customer]);
+
+  useEffect(() => {
+    if (customer?.shop_id === shop?.id && token && shop && items.length > 0 && items.every((item) => item.metadata?.product_type === 'digital')) {
+      getMyWallet(token).then((wallet) => setWalletBalance(wallet.balance || 0)).catch(() => {});
+    }
+  }, [isLoggedIn, token, customer?.shop_id, shop, items]);
 
   // ⏳ Auto-check the payment status every 3 seconds once the order + payment exist.
   // When the payment is verified (sandbox auto-succeeds / real ABA confirms), the
@@ -118,15 +111,20 @@ export default function Checkout() {
 
   if (!shop) return null;
 
+  const digitalOnly = items.length > 0 && items.every((item) => item.metadata?.product_type === 'digital');
+  const freeDigitalOrder = digitalOnly && totals.subtotal <= 0;
+  const currentShopLoggedIn = !!token && customer?.shop_id === shop.id;
   const set = (field) => (e) => setForm({ ...form, [field]: e.target.value });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!isLoggedIn) {
+    const shopToken = customer?.shop_id === shop.id ? token : null;
+    const shopLoggedIn = !!shopToken;
+    if (!digitalOnly && !shopLoggedIn) {
       toast.error(t('signInRequired'));
       return;
     }
-    if (!form.customer_name || !form.customer_phone || !form.customer_address || !form.customer_city || !form.customer_country) {
+    if (!digitalOnly && (!form.customer_name || !form.customer_phone || !form.customer_address || !form.customer_city || !form.customer_country)) {
       toast.error(t('fillRequired'));
       return;
     }
@@ -135,11 +133,30 @@ export default function Checkout() {
       const newOrder = await createOrderAsCustomer({
         shop_id: shop.id,
         ...form,
+        customer_name: digitalOnly ? 'Digital Customer' : form.customer_name,
+        customer_phone: digitalOnly ? 'digital' : form.customer_phone,
+        customer_address: digitalOnly ? 'Digital delivery' : form.customer_address,
+        customer_city: digitalOnly ? 'Online' : form.customer_city,
+        customer_country: digitalOnly ? 'Online' : form.customer_country,
         items: items.map((i) => ({
           product_id: i.product_id, name: i.name, price: i.price,
           quantity: i.quantity, variations: i.variations,
         })),
-      }, token);
+        payment_method: digitalOnly ? paymentMethod : 'khqr',
+      }, shopToken);
+      const guestOrderKey = `ms_guest_orders_${shop.id}`;
+      const guestOrders = JSON.parse(localStorage.getItem(guestOrderKey) || '[]');
+      localStorage.setItem(guestOrderKey, JSON.stringify([...new Set([newOrder.order_number, ...guestOrders])].slice(0, 30)));
+      if (freeDigitalOrder) {
+        clear();
+        navigate(`/${shop.username}/order-success?order=${newOrder.order_number}`);
+        return;
+      }
+      if (paymentMethod === 'wallet') {
+        clear();
+        navigate(`/${shop.username}/order-success?order=${newOrder.order_number}`);
+        return;
+      }
       setOrder(newOrder);
       const paymentData = await createPayment({
         order_id: newOrder.id,
@@ -175,15 +192,41 @@ export default function Checkout() {
     }
   };
 
+  const retryQr = async () => {
+    if (!order) return;
+    try {
+      const paymentData = await createPayment({
+        order_id: order.id,
+        success_url: `${window.location.origin}/${shop.username}/order-success?order=${order.order_number}`,
+        error_url: `${window.location.origin}/${shop.username}/checkout`,
+      });
+      setQrFailed(false);
+      setPayment(paymentData);
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'ABA QR is temporarily unavailable');
+    }
+  };
+
   const shipping = 0;
   const grandTotal = Math.round((totals.subtotal + shipping) * 100) / 100;
 
   if (payment) {
     const payAmount = Number(payment.amount || order?.total || 0).toFixed(2);
-    const payTime = fmtKH(order?.created_at);
     return (
-      <div className="min-h-[72vh] bg-white dark:bg-gray-800 py-8 px-4">
-        <div className="max-w-sm mx-auto flex flex-col items-center">
+      <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/55 py-8 px-4 backdrop-blur-[2px]" onClick={() => navigate(`/${shop.username}/checkout`)}>
+        <div className="relative max-w-xl mx-auto rounded-3xl bg-white dark:bg-gray-800 px-5 py-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={() => navigate(`/${shop.username}/checkout`)}
+            className="absolute right-5 top-5 z-10 rounded-full p-2 text-cyan-500 hover:bg-cyan-50"
+            aria-label="Close payment"
+          >
+            <FiX className="h-6 w-6" />
+          </button>
+          <div className="max-w-sm mx-auto flex flex-col items-center">
+            <div className="w-full mb-4">
+              <h2 className="text-2xl font-normal text-slate-900 dark:text-white">ABA KHQR</h2>
+            </div>
           {/* Header: ABA PayWay + timer */}
           <div className="hdr">
             <div className="hdr-inner">
@@ -222,11 +265,10 @@ export default function Checkout() {
                          className="qr-img"
                          onError={() => setQrFailed(true)} />
                   ) : (
-                    <div className="qr-img flex items-center justify-center text-gray-300"><FiSmartphone className="w-12 h-12" /></div>
-                  )}
-                  {!qrFailed && (
-                    <div className="qr-logo-center">
-                      <span className="w-9 h-9 rounded-full bg-white dark:bg-gray-800 border border-gray-100 shadow-md flex items-center justify-center text-[var(--primary)] font-black text-lg">A</span>
+                    <div className="w-[195px] h-[195px] rounded-xl border border-red-200 bg-red-50 px-5 flex flex-col items-center justify-center text-center text-red-700">
+                      <FiSmartphone className="w-10 h-10 mb-2" />
+                      <span className="text-xs font-semibold">{payment.qr_error || 'Real KHQR was not returned'}</span>
+                      <button type="button" onClick={retryQr} className="mt-2 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white">Retry QR</button>
                     </div>
                   )}
                 </div>
@@ -271,12 +313,13 @@ export default function Checkout() {
           {/* Footer */}
           <p className="text-center text-xs text-gray-400 dark:text-gray-500 mt-4">{t('paywayPoweredBy')}</p>
         </div>
+        </div>
       </div>
     );
   }
 
   // If the shop has not configured ABA Pay, do not show any QR / checkout form.
-  if (shop.payment_configured === false) {
+  if (shop.payment_configured === false && !freeDigitalOrder) {
     return (
       <div className="max-w-5xl mx-auto px-4 py-16">
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow p-8 max-w-md mx-auto text-center">
@@ -296,8 +339,39 @@ export default function Checkout() {
     );
   }
 
+  if (digitalOnly) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-16">
+        <div className="rounded-3xl bg-white dark:bg-gray-800 p-7 shadow-xl text-center">
+          <h1 className="text-2xl font-black text-gray-900 dark:text-white">បញ្ជាទិញទំនិញឌីជីថល</h1>
+          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">មិនចាំបាច់បំពេញអាសយដ្ឋាន ឬលេខទូរស័ព្ទទេ។ បង់ប្រាក់រួច ទទួល Gmail/Password ភ្លាមៗ។</p>
+          <div className="my-6 rounded-2xl bg-blue-50 dark:bg-gray-700 p-5 text-left">
+            {items.map((item) => <div key={item.product_id} className="flex justify-between border-b border-blue-100 dark:border-gray-600 py-2 text-sm"><span>{item.name} × {item.quantity}</span><strong>{(item.price * item.quantity).toFixed(2)} {shop.currency}</strong></div>)}
+            <div className="flex justify-between pt-3 font-black"><span>សរុប</span><span>{totals.subtotal.toFixed(2)} {shop.currency}</span></div>
+          </div>
+          {currentShopLoggedIn && !freeDigitalOrder && (
+            <div className="mb-5 text-left">
+              <p className="font-bold mb-2">ជ្រើសរើសវិធីបង់ប្រាក់</p>
+              <div className="grid grid-cols-2 gap-3">
+                <button type="button" onClick={() => setPaymentMethod('wallet')} className={`rounded-xl border-2 p-3 ${paymentMethod === 'wallet' ? 'border-pink-500 bg-pink-50' : 'border-gray-200'}`}>
+                  <b>Wallet</b><span className="block text-xs text-gray-500 mt-1">${Number(walletBalance).toFixed(2)}</span>
+                </button>
+                <button type="button" onClick={() => setPaymentMethod('khqr')} className={`rounded-xl border-2 p-3 ${paymentMethod === 'khqr' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}>
+                  <b>ABA KHQR</b><span className="block text-xs text-gray-500 mt-1">Scan QR</span>
+                </button>
+              </div>
+            </div>
+          )}
+          <button onClick={handleSubmit} disabled={submitting} className="w-full rounded-2xl bg-blue-600 py-4 font-black text-white hover:bg-blue-700 disabled:opacity-50">
+            {submitting ? 'កំពុងដំណើរការ...' : (freeDigitalOrder ? 'ទទួលទំនិញឥតគិតថ្លៃ' : paymentMethod === 'wallet' ? 'បង់តាម Wallet' : 'បន្តទៅបង់ប្រាក់ ABA PayWay')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // 🔒 Customer account is REQUIRED before buying — block checkout if not signed in.
-  if (!isLoggedIn) {
+  if (!currentShopLoggedIn) {
     return (
       <div className="max-w-5xl mx-auto px-4 py-16">
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow p-8 max-w-md mx-auto">

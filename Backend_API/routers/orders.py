@@ -2,13 +2,15 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
+from datetime import datetime
 
 import models
 import schemas
 from database import get_db
-from security import (get_current_customer, get_current_shop_user, get_current_user,
+from security import (get_optional_customer, get_current_shop_user, get_current_user,
                       log_activity, require_shop_access)
 from services import pdf_service
+from services import stock_service
 from utils.helpers import generate_order_number
 from routers.payments import _mark_paid, _process_first_payment
 
@@ -17,7 +19,7 @@ router = APIRouter(prefix="/api/orders", tags=["orders"])
 
 @router.post("")
 def create_order(data: schemas.OrderCreate, db: Session = Depends(get_db),
-                 customer: models.Customer = Depends(get_current_customer)):
+                 customer: models.Customer = Depends(get_optional_customer)):
     """
     Create an order. REQUIRES a valid customer JWT (real Telegram login).
 
@@ -29,19 +31,23 @@ def create_order(data: schemas.OrderCreate, db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail="Shop not found or unavailable")
     if not data.items:
         raise HTTPException(status_code=400, detail="Order must contain at least one item")
-    if customer.shop_id != data.shop_id:
+    if customer and customer.shop_id != data.shop_id:
         raise HTTPException(status_code=403, detail="This account is not registered at this shop")
 
+    payment_method = (data.payment_method or "khqr").lower()
+    if payment_method not in ("khqr", "wallet"):
+        raise HTTPException(status_code=400, detail="Invalid payment method")
+
     # Link the order to the logged-in Telegram customer
-    customer_telegram = data.customer_telegram or customer.telegram or f"tg{customer.telegram_id}"
+    customer_telegram = data.customer_telegram or (customer.telegram if customer else "") or (f"tg{customer.telegram_id}" if customer else "")
     order = models.Order(
         shop_id=data.shop_id,
-        customer_id=customer.id,
+        customer_id=customer.id if customer else None,
         order_number=generate_order_number(data.shop_id),
-        customer_name=data.customer_name or customer.name,
+        customer_name=data.customer_name or (customer.name if customer else "Digital Customer"),
         customer_email=data.customer_email,
-        customer_phone=data.customer_phone or customer.phone,
-        customer_telegram=customer_telegram,
+        customer_phone=data.customer_phone or (customer.phone if customer else "digital"),
+        customer_telegram=customer_telegram if customer else "",
         customer_address=data.customer_address,
         customer_city=data.customer_city,
         customer_country=data.customer_country,
@@ -52,6 +58,7 @@ def create_order(data: schemas.OrderCreate, db: Session = Depends(get_db),
     )
 
     items_total = 0.0
+    digital_only = True
     for item in data.items:
         product = db.query(models.Product).filter(models.Product.id == item.product_id).first()
         unit_price = item.price
@@ -60,28 +67,52 @@ def create_order(data: schemas.OrderCreate, db: Session = Depends(get_db),
             # Stock is NOT deducted here — it is deducted automatically when the
             # payment is confirmed successful (see payments._mark_paid).
         items_total += float(unit_price) * item.quantity
+        item_variations = dict(item.variations or {})
+        product_meta = models.JSONText.loads(product.metadata_json, {}) if product else {}
+        digital_only = digital_only and product_meta.get("product_type") == "digital"
+        delivery = None
+        if product_meta.get("product_type") == "digital":
+            pool = (product_meta.get("digital_delivery") or {}).get("credentials") or []
+            delivery = pool[0] if pool else product_meta.get("digital_delivery")
+        if delivery:
+            item_variations["_digital_delivery"] = delivery
         db.add(models.OrderItem(
             order=order,
             product_id=item.product_id,
             product_name=item.name or (product.name if product else "Product"),
             price=float(unit_price),
             quantity=item.quantity,
-            variations=models.JSONText.dumps(item.variations),
+            variations=models.JSONText.dumps(item_variations),
         ))
 
     order.items_total = round(items_total, 2)
     order.total = round(items_total + float(data.shipping_fee) - float(data.discount), 2)
+    order.payment_method = payment_method
+    if payment_method == "wallet":
+        if not customer or not digital_only:
+            raise HTTPException(status_code=400, detail="Wallet payment is available for digital products only")
+        if float(customer.wallet_balance or 0) < order.total:
+            raise HTTPException(status_code=400, detail="Insufficient wallet balance")
+        customer.wallet_balance = round(float(customer.wallet_balance or 0) - order.total, 2)
+        db.add(models.WalletTransaction(customer_id=customer.id, shop_id=data.shop_id,
+                                        amount=-order.total, transaction_type="purchase",
+                                        reference=order.order_number, note="Digital product purchase"))
+        order.payment_status = "paid"
+        order.paid_at = datetime.utcnow()
+    if order.total <= 0:
+        order.payment_status = "paid"
+        order.paid_at = datetime.utcnow()
 
     # Upsert customer for the shop (the logged-in Telegram customer is primary)
     existing = db.query(models.Customer).filter(
         models.Customer.shop_id == data.shop_id,
-        models.Customer.telegram_id == customer.telegram_id).first()
+        models.Customer.telegram_id == customer.telegram_id).first() if customer else None
     if not existing:
         existing = db.query(models.Customer).filter(
             models.Customer.shop_id == data.shop_id,
             models.Customer.phone == data.customer_phone,
             models.Customer.name == data.customer_name).first()
-    if existing:
+    if customer and existing:
         existing.telegram_id = customer.telegram_id or existing.telegram_id
         existing.telegram = data.customer_telegram or customer.telegram or existing.telegram
         existing.phone = data.customer_phone or existing.phone
@@ -89,7 +120,7 @@ def create_order(data: schemas.OrderCreate, db: Session = Depends(get_db),
         existing.city = data.customer_city or existing.city
         existing.country = data.customer_country or existing.country
         existing.email = data.customer_email or existing.email
-    else:
+    elif customer:
         db.add(models.Customer(
             shop_id=data.shop_id, name=data.customer_name or customer.name,
             phone=data.customer_phone or customer.phone,
@@ -101,6 +132,19 @@ def create_order(data: schemas.OrderCreate, db: Session = Depends(get_db),
     db.add(order)
     db.commit()
     db.refresh(order)
+
+    if order.payment_status == "paid":
+        stock_service.deduct_stock_for_order(db, order)
+        for item in order.items:
+            product = db.query(models.Product).filter(models.Product.id == item.product_id).first()
+            metadata = models.JSONText.loads(product.metadata_json, {}) if product else {}
+            delivery = models.JSONText.loads(item.variations, {}).get("_digital_delivery")
+            pool = (metadata.get("digital_delivery") or {}).get("credentials") or []
+            if delivery and pool:
+                metadata["digital_delivery"]["credentials"] = [entry for entry in pool if entry != delivery]
+                product.metadata_json = models.JSONText.dumps(metadata)
+        db.commit()
+        db.refresh(order)
 
     # NOTE: no "new order" Telegram notification here — the shop's Telegram group
     # only receives a message when the payment is CONFIRMED SUCCESSFUL

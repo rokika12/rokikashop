@@ -5,7 +5,7 @@ import { FiCalendar, FiEdit2, FiEye, FiEyeOff, FiKey, FiList, FiLogOut, FiSave, 
 import { useShop } from '../contexts/ShopContext';
 import { useCustomer } from '../contexts/CustomerContext';
 import { useLanguage } from '../i18n';
-import { getMyOrders, updateMyProfile, changeMyPassword } from '../api';
+import { fullUrl, getMyOrders, getMyWallet, topUpWallet, updateMyProfile, changeMyPassword, verifyPayment } from '../api';
 import CustomerAuth from '../components/CustomerAuth';
 
 export default function Profile() {
@@ -23,6 +23,10 @@ export default function Profile() {
   const [pwForm, setPwForm] = useState({ current_password: '', new_password: '', confirm_password: '' });
   const [changingPw, setChangingPw] = useState(false);
   const [showPw, setShowPw] = useState({ current: false, next: false, confirm: false });
+  const [wallet, setWallet] = useState({ balance: 0, transactions: [] });
+  const [topupAmount, setTopupAmount] = useState('5');
+  const [topup, setTopup] = useState(null);
+  const [topupBusy, setTopupBusy] = useState(false);
 
   useEffect(() => {
     if (!isLoggedIn || !token) return;
@@ -30,8 +34,36 @@ export default function Profile() {
     getMyOrders(token)
       .then((res) => { if (mounted) setOrdersCount(res.count || 0); })
       .catch(() => {});
+    getMyWallet(token).then(setWallet).catch(() => {});
     return () => { mounted = false; };
   }, [isLoggedIn, token]);
+
+  const startTopup = async () => {
+    const amount = Number(topupAmount);
+    if (!amount || amount < 0.10) { toast.error('Enter a valid top-up amount'); return; }
+    setTopupBusy(true);
+    try {
+      const result = await topUpWallet(token, {
+        amount,
+        success_url: `${window.location.origin}${window.location.pathname}`,
+        error_url: window.location.href,
+      });
+      setTopup(result);
+      window.open(result.payment.checkout_url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Unable to start wallet top-up');
+    } finally { setTopupBusy(false); }
+  };
+
+  const confirmTopup = async () => {
+    if (!topup?.order?.id) return;
+    try {
+      const result = await verifyPayment({ order_id: topup.order.id, transaction_id: topup.payment?.transaction_id || '' });
+      if (!result.verified) { toast.error('Payment is still pending'); return; }
+      const updated = await getMyWallet(token);
+      setWallet(updated); setTopup(null); toast.success('Wallet balance updated');
+    } catch (err) { toast.error(err?.response?.data?.detail || 'Could not confirm top-up'); }
+  };
 
   // Prefill the edit form from the current customer profile.
   useEffect(() => {
@@ -186,6 +218,16 @@ export default function Profile() {
           </button>
         )}
       </div>
+
+      {shop.store_type === 'digital' && <div className="bg-gradient-to-r from-blue-700 to-pink-500 rounded-2xl shadow p-6 mb-6 text-white">
+        <p className="text-xs font-bold uppercase tracking-widest text-white/75">Digital wallet</p>
+        <p className="text-3xl font-black mt-2">${Number(wallet.balance || 0).toFixed(2)}</p>
+        <div className="flex flex-wrap gap-2 mt-4">
+          <input type="number" min="0.10" step="0.10" value={topupAmount} onChange={(e) => setTopupAmount(e.target.value)} className="w-28 rounded-lg px-3 py-2 text-gray-900" />
+          <button type="button" onClick={startTopup} disabled={topupBusy} className="rounded-lg bg-white px-4 py-2 font-bold text-blue-700 disabled:opacity-60">{topupBusy ? 'Loading...' : 'Add Balance'}</button>
+        </div>
+        {topup && <div className="mt-4 rounded-xl bg-white/15 p-3 text-sm"><p>Scan the real ABA KHQR or open the payment page, then confirm.</p>{topup.payment?.qr_code_url && <img src={fullUrl(topup.payment.qr_code_url)} alt="ABA KHQR" className="w-40 h-40 bg-white rounded-xl p-2 mt-3 mx-auto" />}<a href={topup.payment?.checkout_url} target="_blank" rel="noreferrer" className="inline-block mt-3 rounded-lg bg-white px-3 py-2 font-bold text-blue-700">Open ABA Pay</a><button type="button" onClick={confirmTopup} className="ml-2 rounded-lg bg-white px-3 py-2 font-bold text-pink-600">Confirm top-up</button></div>}
+      </div>}
 
       {editing ? (
         <form onSubmit={saveProfile} className="bg-white dark:bg-gray-800 rounded-2xl shadow p-6 mb-6 space-y-3">
